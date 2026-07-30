@@ -1,0 +1,16 @@
+node_modules/
+
+backend/.env
+backend/dist/
+backend/node_modules/
+backend/*.log
+
+frontend/dist/
+frontend/node_modules/
+
+*.log
+.DS_Store
+
+.claude/
+.agents/
+graphify-out/
