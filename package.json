@@ -5,7 +5,7 @@
   "description": "Follow-up Task Engine — monorepo root",
   "scripts": {
     "build": "cd frontend && npm install && npm run build",
-    "start": "cd backend && npm start",
+    "start": "npm run build && cd backend && npm start",
     "start:all": "cd backend && npm run dev",
     "backend:start": "cd backend && npm start",
     "backend:dev": "cd backend && npm run dev",
