@@ -4,7 +4,7 @@
   "private": true,
   "description": "Follow-up Task Engine — monorepo root",
   "scripts": {
-    "build": "cd frontend && npm install && npm run build",
+    "build": "cd frontend && npm install --include=dev && npm run build",
     "start": "npm run build && cd backend && npm start",
     "start:all": "cd backend && npm run dev",
     "backend:start": "cd backend && npm start",
