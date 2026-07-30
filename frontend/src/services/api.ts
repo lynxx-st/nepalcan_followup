@@ -1,0 +1,134 @@
+import axios, { AxiosError } from 'axios';
+
+const api = axios.create({
+  baseURL: '/api',
+  headers: { 'Content-Type': 'application/json' },
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response.data,
+  (error: AxiosError) => {
+    const message = (error.response?.data as any)?.error?.message || error.message;
+    console.error('API error:', message);
+    return Promise.reject(error);
+  }
+);
+
+const inMemoryCache = new Map<string, { data: any; ts: number }>();
+const CACHE_TTL = 30_000;
+
+function cachedGet<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+  const hit = inMemoryCache.get(key);
+  if (hit && Date.now() - hit.ts < CACHE_TTL) {
+    fetcher().then(data => inMemoryCache.set(key, { data, ts: Date.now() })).catch(() => {});
+    return Promise.resolve(hit.data);
+  }
+  return fetcher().then(data => {
+    inMemoryCache.set(key, { data, ts: Date.now() });
+    return data;
+  });
+}
+
+function invalidateCache(pattern?: string) {
+  if (pattern) {
+    for (const key of inMemoryCache.keys()) {
+      if (key.startsWith(pattern)) inMemoryCache.delete(key);
+    }
+  } else {
+    inMemoryCache.clear();
+  }
+}
+
+export const taskApi = {
+  create: (data: any) => api.post('/v1/tasks', data),
+  list: (filters: Record<string, any> = {}) => {
+    const params = new URLSearchParams(filters).toString();
+    return api.get(`/v1/tasks?${params}`);
+  },
+  getById: (id: string) => api.get(`/v1/tasks/${id}`),
+  getNext: () => api.get('/v1/tasks/next'),
+  assign: (id: string, data: any) => api.put(`/v1/tasks/${id}/assign`, data),
+  complete: (id: string, data: any) => api.put(`/v1/tasks/${id}/complete`, data),
+  skip: (id: string, data: any) => api.put(`/v1/tasks/${id}/skip`, data),
+  update: (id: string, data: any) => api.put(`/v1/tasks/${id}`, data),
+  delete: (id: string) => api.delete(`/v1/tasks/${id}`),
+  schedule: (id: string, scheduledDate: string) => api.put(`/v1/tasks/${id}/schedule`, { scheduledDate }),
+};
+
+export const ruleApi = {
+  list: () => api.get('/v1/rules'),
+  create: (data: any) => api.post('/v1/rules', data),
+  update: (id: string, data: any) => api.put(`/v1/rules/${id}`, data),
+  delete: (id: string) => api.delete(`/v1/rules/${id}`),
+  toggle: (id: string) => api.patch(`/v1/rules/${id}/toggle`),
+  evaluate: (data: any) => api.post('/v1/rules/evaluate', data),
+};
+
+export const recoveryApi = {
+  list: () => api.get('/v1/recovery'),
+  create: (data: any) => api.post('/v1/recovery', data),
+  update: (id: string, data: any) => api.put(`/v1/recovery/${id}`, data),
+  getStats: () => api.get('/v1/recovery/stats'),
+};
+
+export const dashboardApi = {
+  getToday: () => api.get('/v1/dashboard/today'),
+  getStats: () => api.get('/v1/dashboard/stats'),
+  getOrders: () => api.get('/v1/dashboard/orders'),
+};
+
+export const commerceApi = {
+  login: () => api.post('/v1/commerce/login'),
+  syncOrders: (options: Record<string, any> = {}) => {
+    const params = new URLSearchParams(options).toString();
+    return api.post(`/v1/commerce/sync?${params}`);
+  },
+  getOrders: (filters: Record<string, any> = {}) => {
+    const key = `getOrders:${JSON.stringify(filters)}`;
+    return cachedGet(key, () => {
+      const params = new URLSearchParams(filters).toString();
+      return api.get(`/v1/commerce/orders?${params}`);
+    });
+  },
+  getOrderById: (id: string) => {
+    const key = `getOrderById:${id}`;
+    return cachedGet(key, () => api.get(`/v1/commerce/orders/${id}`));
+  },
+  getOrderStatus: (id: string) => api.get(`/v1/commerce/orders/${id}/status`),
+  getDetail: (id: string) => {
+    const key = `getDetail:${id}`;
+    return cachedGet(key, () => api.get(`/v1/commerce/orders/${id}/detail`));
+  },
+  updatePhone: (id: string, phone: string, type: string) => {
+    invalidateCache('getOrders');
+    invalidateCache('getDetail');
+    return api.put(`/v1/commerce/orders/${id}/phone`, { phone, type });
+  },
+  updateStatus: (id: string, data: Record<string, any>) => {
+    invalidateCache('getOrders');
+    invalidateCache('getDetail');
+    return api.put(`/v1/commerce/orders/${id}/status`, data);
+  },
+};
+
+export const noteApi = {
+  addNote: (taskId: string, note: string) => api.post(`/v1/tasks/${taskId}/notes`, { note }),
+  addOrderNote: (orderId: string, note: string) => api.post(`/v1/commerce/orders/${orderId}/notes`, { note }),
+};
+
+export const authApi = {
+  login: (email: string, password: string) => api.post('/v1/auth/login', { email, password }),
+};
+
+export const settingsApi = {
+  get: () => api.get('/v1/settings'),
+  update: (data: Record<string, any>) => api.put('/v1/settings', data),
+};
+
+export default api;

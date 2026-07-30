@@ -1,0 +1,14 @@
+{
+  "name": "followup-project",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Follow-up Task Engine — monorepo root",
+  "scripts": {
+    "backend:start": "cd backend && npm start",
+    "backend:dev": "cd backend && npm run dev",
+    "frontend:dev": "cd frontend && npm run dev",
+    "frontend:build": "cd frontend && npm run build",
+    "start": "cd backend && npm start",
+    "dev": "cd backend && npm run dev"
+  }
+}
