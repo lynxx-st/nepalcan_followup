@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -49,6 +50,14 @@ app.use('/api/v1/internal/task-generator', internalLimiter, taskGeneratorRoutes)
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
+app.use(express.static(frontendDist));
+app.get('*', (req, res) => {
+  if (!req.path.startsWith('/api') && !req.path.startsWith('/health')) {
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  }
 });
 
 app.use(notFoundHandler);
