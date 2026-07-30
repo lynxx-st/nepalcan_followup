@@ -15,6 +15,7 @@ const SEGMENTS = [
   { key: 'pending_review', label: 'Pending Review Calls', icon: ThumbsUp },
   { key: 'confirmed_unprocessed', label: 'Confirmed But Not Processed', icon: PackageCheck },
   { key: 'delivered_followup', label: 'Follow-up of Delivered Calls', icon: Store },
+  { key: 'done', label: 'Marked Done', icon: CheckCircle2 },
 ] as const;
 
 const PAGE_SIZE = 10;
@@ -53,10 +54,11 @@ export default function Orders() {
     const vs = order.vendorStatus || 'unassigned';
     const os = (order.orderStatus || '').toLowerCase();
     switch (segment) {
-      case 'pending_confirmation': return cs === 'pending' && os !== 'cancelled';
+      case 'pending_confirmation': return cs === 'pending' && os === 'pending';
       case 'pending_review': return cs === 'confirmed' && vs === 'accepted' && (os === 'pending' || os === 'processing');
       case 'confirmed_unprocessed': return cs === 'confirmed' && (os === 'pending' || os === '');
       case 'delivered_followup': return os === 'delivered';
+      case 'done': return cs === 'confirmed';
       default: return false;
     }
   };
@@ -81,6 +83,15 @@ export default function Orders() {
       toast.success('Order skipped');
       fetchOrders(page);
     } catch { toast.error('Failed to skip task'); }
+  };
+
+  const handleMarkDone = async (e: React.MouseEvent, order: any) => {
+    e.stopPropagation();
+    try {
+      await commerceApi.updateStatus(order.commerceOrderId, { confirmationStatus: 'confirmed' });
+      toast.success('Order marked as confirmed');
+      fetchOrders(page);
+    } catch { toast.error('Failed to mark as done'); }
   };
 
   const segmentCounts = SEGMENTS.map((seg) => ({
@@ -196,6 +207,12 @@ export default function Orders() {
                         <span className="text-[10px] font-black px-2 py-0.5 rounded bg-blue-100 text-blue-800">Delivered</span>
                       )}
                     </div>
+                    {activeSegment === 'pending_confirmation' && (
+                      <button onClick={(e) => handleMarkDone(e, order)}
+                        className="mt-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 cursor-pointer">
+                        Mark Done
+                      </button>
+                    )}
                     {order.taskId && (
                       <button onClick={(e) => handleSkip(e, order)}
                         className="mt-1 text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 cursor-pointer">
