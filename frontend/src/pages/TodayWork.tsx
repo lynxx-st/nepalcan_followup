@@ -7,7 +7,7 @@ import SLACountdown from '../components/SLACountdown';
 import { getSLAInfo } from '../utils/ruleEngine';
 import {
   PhoneCall, Store, Clock, RefreshCw, Star, AlertTriangle,
-  Zap, ArrowRight, CheckCircle2, TrendingUp, Filter, X,
+  Zap, ArrowRight, CheckCircle2, TrendingUp, Filter, X, Truck,
 } from 'lucide-react';
 
 
@@ -19,6 +19,7 @@ const CALL_TYPES = [
   { key: 'cancelled-recovery', label: 'Cancelled Recovery', icon: RefreshCw, color: 'text-rose-600', bgColor: 'bg-rose-500/10', borderColor: 'border-rose-500/30' },
   { key: 'review-call', label: 'Review Calls', icon: Star, color: 'text-yellow-600', bgColor: 'bg-yellow-500/10', borderColor: 'border-yellow-500/30' },
   { key: 'escalation', label: 'Escalations', icon: AlertTriangle, color: 'text-red-600', bgColor: 'bg-red-500/10', borderColor: 'border-red-500/30' },
+  { key: 'logistics-followup', label: 'Logistics Follow-up', icon: Truck, color: 'text-teal-600', bgColor: 'bg-teal-500/10', borderColor: 'border-teal-500/30' },
   { key: 'overdue', label: 'Overdue SLA', icon: AlertTriangle, color: 'text-red-600', bgColor: 'bg-red-500/10', borderColor: 'border-red-500/40' },
 ];
 

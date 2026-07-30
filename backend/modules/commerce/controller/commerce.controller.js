@@ -390,10 +390,32 @@ async function addOrderNote(req, res) {
   }
 }
 
+async function syncAll(req, res) {
+  try {
+    if (commerceSync.getSyncStatus().running) {
+      return res.json({ success: true, data: { message: 'Sync already running', running: true } });
+    }
+    commerceSync.runSyncAll();
+    res.json({ success: true, data: { message: 'Sync started', running: true } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: error.message } });
+  }
+}
+
+async function getSyncStatus(req, res) {
+  try {
+    res.json({ success: true, data: commerceSync.getSyncStatus() });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: error.message } });
+  }
+}
+
 module.exports = {
   login,
   syncOrders,
   syncExternalNonHeavy,
+  syncAll,
+  getSyncStatus,
   getOrders,
   getOrderById,
   getOrderStatus,

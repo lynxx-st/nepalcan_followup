@@ -69,4 +69,9 @@ export const QUEUE_CONFIG: Record<TaskQueue, { label: string; color: string; bad
     color: 'text-red-600',
     badgeBg: 'bg-red-100 text-red-800 border-red-200',
   },
+  'logistics-followup': {
+    label: 'Logistics Follow-up',
+    color: 'text-teal-600',
+    badgeBg: 'bg-teal-100 text-teal-800 border-teal-200',
+  },
 };

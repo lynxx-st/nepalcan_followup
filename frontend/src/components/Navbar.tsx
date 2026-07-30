@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   CheckSquare, Zap, Layers, Sliders, RotateCcw, ShoppingBag, BarChart3,
-  Clock, PlusCircle, Search, Menu, X, LogOut, Bell, Settings,
+  Clock, PlusCircle, Search, Menu, X, LogOut, Bell, Settings, RefreshCw,
 } from 'lucide-react';
 import { useSimulatedTime } from '../hooks/useSimulatedTime';
 import { io, Socket } from 'socket.io-client';
+import { commerceApi } from '../services/api';
 
 const NAV_LINKS = [
   { to: '/today', label: "Today's Work", icon: CheckSquare },
@@ -26,6 +27,8 @@ export default function Navbar() {
   const { simulatedTimeIso, advanceTime } = useSimulatedTime();
   const [newOrderCount, setNewOrderCount] = useState(0);
   const [showNotif, setShowNotif] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -35,6 +38,37 @@ export default function Navbar() {
     });
     return () => { socket.disconnect(); };
   }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    const check = async () => {
+      try {
+        const res: any = await commerceApi.getSyncStatus();
+        const status = res.data;
+        setSyncing(status.running);
+        if (status.lastCompletedAt) setLastSyncTime(status.lastCompletedAt);
+      } catch {}
+    };
+    check();
+    const interval = setInterval(check, 5000);
+    return () => clearInterval(interval);
+  }, [token]);
+
+  const handleSync = async () => {
+    try {
+      await commerceApi.syncAll();
+      setSyncing(true);
+    } catch {}
+  };
+
+  const formatTimeAgo = (iso: string) => {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    return `${hrs}h ${mins % 60}m ago`;
+  };
 
   const formattedTime = new Date(simulatedTimeIso).toLocaleString('en-US', {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -85,6 +119,14 @@ export default function Navbar() {
               className="px-2 py-0.5 rounded bg-white text-red-700 hover:bg-red-50 font-bold transition-colors text-[11px] cursor-pointer"
             >+8h</button>
           </div>
+
+          <button onClick={handleSync} disabled={syncing}
+            className="flex items-center gap-1.5 bg-red-700 border border-red-500 hover:bg-red-600 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
+            title={lastSyncTime ? `Last sync ${formatTimeAgo(lastSyncTime)}` : 'Sync now'}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            <span>{syncing ? 'Syncing...' : 'Sync'}</span>
+          </button>
 
           <div className="relative">
             <button onClick={() => { setShowNotif(!showNotif); if (showNotif) setNewOrderCount(0); }}

@@ -4,7 +4,8 @@ export type TaskQueue =
   | 'vendor-delay'
   | 'cancelled-recovery'
   | 'review-call'
-  | 'escalation';
+  | 'escalation'
+  | 'logistics-followup';
 
 export type TaskPriority = 'critical' | 'high' | 'medium' | 'low';
 

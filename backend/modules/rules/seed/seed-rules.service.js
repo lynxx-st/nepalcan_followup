@@ -67,6 +67,17 @@ const defaultRules = [
     delayHours: 0,
     active: true,
   },
+  {
+    name: 'Logistics Follow-up — Not Picked Up',
+    description: 'Order processing but not collected by logistics partner',
+    trigger: 'order.status.changed',
+    condition: { status: 'processing' },
+    taskType: 'logistics-followup',
+    priority: 'high',
+    slaMinutes: 120,
+    delayHours: 6,
+    active: true,
+  },
 ];
 
 async function seedTaskRules() {

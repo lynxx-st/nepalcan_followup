@@ -5,6 +5,8 @@ const { internalLimiter } = require('../../../src/middleware/rateLimiter');
 
 router.post('/login', commerceController.login);
 router.post('/sync', internalLimiter, commerceController.syncOrders);
+router.post('/sync/all', commerceController.syncAll);
+router.get('/sync/status', commerceController.getSyncStatus);
 router.post('/sync/external-non-heavy', internalLimiter, commerceController.syncExternalNonHeavy);
 router.get('/orders', commerceController.getOrders);
 router.get('/orders/:commerceOrderId', commerceController.getOrderById);

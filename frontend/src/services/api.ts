@@ -89,6 +89,8 @@ export const commerceApi = {
     const params = new URLSearchParams(options).toString();
     return api.post(`/v1/commerce/sync?${params}`);
   },
+  syncAll: () => api.post('/v1/commerce/sync/all'),
+  getSyncStatus: () => api.get('/v1/commerce/sync/status'),
   getOrders: (filters: Record<string, any> = {}) => {
     const key = `getOrders:${JSON.stringify(filters)}`;
     return cachedGet(key, () => {

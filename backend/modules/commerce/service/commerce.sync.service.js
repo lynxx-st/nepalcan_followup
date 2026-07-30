@@ -25,6 +25,43 @@ class CommerceSyncService {
       escalation: 10,
       'logistics-followup': 120,
     };
+    this.syncStatus = {
+      running: false,
+      lastStartedAt: null,
+      lastCompletedAt: null,
+      totalOrdersSynced: 0,
+      totalLogisticsSynced: 0,
+      tasksCreated: 0,
+      lastError: null,
+    };
+  }
+
+  getSyncStatus() {
+    return { ...this.syncStatus };
+  }
+
+  async runSyncAll() {
+    if (this.syncStatus.running) return;
+
+    this.syncStatus.running = true;
+    this.syncStatus.lastStartedAt = new Date().toISOString();
+    this.syncStatus.lastError = null;
+
+    try {
+      const orderResult = await this.syncOrders();
+      this.syncStatus.totalOrdersSynced = orderResult.totalFetched;
+
+      const logisticsResult = await this.syncExternalNonHeavy();
+      this.syncStatus.totalLogisticsSynced = logisticsResult.totalUpdated;
+      this.syncStatus.tasksCreated = logisticsResult.tasksCreated;
+
+      this.syncStatus.lastCompletedAt = new Date().toISOString();
+    } catch (err) {
+      this.syncStatus.lastError = err.message;
+      logger.error('Sync all failed', { error: err.message });
+    } finally {
+      this.syncStatus.running = false;
+    }
   }
 
   async loadSettings() {

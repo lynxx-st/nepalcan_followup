@@ -6,6 +6,7 @@ const morgan = require('morgan');
 const { Server } = require('socket.io');
 const config = require('./config');
 const { connectDatabase, mongoose, seedSettings } = require('./database/models');
+const seedTaskRules = require('./modules/rules/seed/seed-rules.service');
 const { errorHandler, notFoundHandler } = require('./src/middleware');
 
 const taskRoutes = require('./modules/tasks/routes/task.routes');
@@ -67,6 +68,7 @@ const startServer = async () => {
   try {
     await connectDatabase(config.mongoUri);
     await seedSettings();
+    await seedTaskRules();
     console.log('Follow-up engine ready');
 
     const PORT = config.port;
