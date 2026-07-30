@@ -420,6 +420,7 @@ class CommerceSyncService {
       activeTaskType: taskMap[o.commerceOrderId]?.taskType || null,
     }));
 
+    const total = await CommerceOrder.countDocuments(query);
     return { orders, total, page, limit };
   }
 
