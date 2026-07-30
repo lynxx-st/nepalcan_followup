@@ -1,6 +1,0 @@
-{
-  "name": "Operations Task Engine & Follow-Up CRM",
-  "description": "Task-driven operations CRM with automated follow-up rules, rapid call modes, SLA tracking, and cancellation recovery.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

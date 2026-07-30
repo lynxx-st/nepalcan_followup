@@ -12,6 +12,8 @@ frontend/node_modules/
 *.log
 .DS_Store
 
+agent/
+example ui/
 .claude/
 .agents/
 graphify-out/
