@@ -6,6 +6,69 @@ class RecoveryService {
     return RecoveryCampaign.create(data);
   }
 
+  async recordOrderRecovery({ order, isCancel, fromStatus, toStatus }) {
+    const orderId = order.commerceOrderId || String(order._id);
+    const customerName = order.customer && typeof order.customer === 'object' ? order.customer.name : order.customer;
+    const customerPhone = order.customer?.phone || order.customerPhone;
+    const totalAmount = order.commerce?.totalAmount || order.totalAmount || 0;
+    const reason = order.commerce?.cancelledReason || order.cancelledReason || 'Not specified';
+    const orderNumber = order.orderNumber || order.orderId || orderId;
+
+    const existing = await RecoveryCampaign.findOne({ commerceOrderId: orderId });
+
+    if (isCancel) {
+      if (existing) {
+        existing.outcome = 'in-progress';
+        existing.cancellationReason = reason;
+        existing.customerName = customerName;
+        existing.customerPhone = customerPhone;
+        existing.revenueAmount = totalAmount;
+        existing.recoveredRevenue = 0;
+        existing.steps = [];
+        return existing.save();
+      }
+      return RecoveryCampaign.create({
+        orderId: order._id,
+        commerceOrderId: orderId,
+        orderNumber,
+        customerName,
+        customerPhone,
+        revenueAmount: totalAmount,
+        cancellationReason: reason,
+        outcome: 'in-progress',
+      });
+    }
+
+    const revivedStep = {
+      action: 'Order revived',
+      note: `${fromStatus || 'Cancelled'} → ${toStatus || 'Active'}`,
+      outcome: 'success',
+      completedAt: new Date(),
+    };
+
+    if (!existing) {
+      return RecoveryCampaign.create({
+        orderId: order._id,
+        commerceOrderId: orderId,
+        orderNumber,
+        customerName,
+        customerPhone,
+        revenueAmount: totalAmount,
+        cancellationReason: reason,
+        outcome: 'recovered',
+        recoveredRevenue: totalAmount,
+        steps: [revivedStep],
+      });
+    }
+    if (existing.outcome !== 'recovered') {
+      existing.outcome = 'recovered';
+      existing.recoveredRevenue = totalAmount || existing.revenueAmount;
+      existing.steps.push(revivedStep);
+      await existing.save();
+    }
+    return existing;
+  }
+
   async getCampaignById(id) {
     const campaign = await RecoveryCampaign.findById(id);
     if (!campaign) throw new NotFoundError('Recovery campaign not found');

@@ -164,8 +164,16 @@ class TaskService {
   }
 
   async getNextTask(assigneeId) {
+    const assigneeMatch = assigneeId
+      ? [{ assigneeId }, { assigneeId: null }, { assigneeId: { $exists: false } }]
+      : [{ assigneeId: null }, { assigneeId: { $exists: false } }];
     const [task] = await Task.aggregate([
-      { $match: { assigneeId, status: { $in: ['pending', 'overdue'] } } },
+      {
+        $match: {
+          $or: assigneeMatch,
+          status: { $in: ['pending', 'overdue'] },
+        },
+      },
       { $addFields: { priorityScore: priorityScoreSwitch() } },
       { $sort: { priorityScore: -1, dueAt: 1, createdAt: 1 } },
       { $limit: 1 },
@@ -176,8 +184,18 @@ class TaskService {
   async getTodaySummary(assigneeId) {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const assigneeMatch = assigneeId
+      ? {
+          $or: [
+            { assigneeId },
+            { assigneeId: null },
+            { assigneeId: { $exists: false } },
+          ],
+        }
+      : { $or: [{ assigneeId: null }, { assigneeId: { $exists: false } }] };
     const tasks = await Task.find({
-      assigneeId, status: { $in: ['pending', 'in-progress', 'overdue'] },
+      ...assigneeMatch,
+      status: { $in: ['pending', 'in-progress', 'overdue'] },
       createdAt: { $gte: today, $lt: tomorrow },
     }).populate('assigneeId', 'name email');
     const summary = { date: today.toISOString(), total: tasks.length, byType: {}, byPriority: {}, overdue: 0 };

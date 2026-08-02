@@ -69,7 +69,7 @@ async function listTasks(req, res, next) {
 
     const result = await taskService.listTasks({
       ...value,
-      assigneeId: req.user?.userId || value.assigneeId,
+      assigneeId: value.assigneeId,
     });
 
     res.json({ success: true, data: result });

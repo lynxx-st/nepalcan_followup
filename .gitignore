@@ -8,6 +8,9 @@ backend/*.log
 
 frontend/dist/
 frontend/node_modules/
+frontend/test-results/
+frontend/playwright-report/
+frontend/tests/.auth/
 
 *.log
 .DS_Store
@@ -17,3 +20,5 @@ example ui/
 .claude/
 .agents/
 graphify-out/
+
+.playwright-mcp/

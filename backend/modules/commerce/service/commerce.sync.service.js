@@ -7,6 +7,7 @@ const config = require('../../../config');
 const logger = require('../../../utils/logger');
 const { decodeBase64 } = require('../../../utils/decode');
 const settingsService = require('../../../modules/settings/service/settings.service');
+const recoveryService = require('../../../modules/recovery/service/recovery.service');
 
 const COMMERCE_BASE = config.commerceApiBase;
 
@@ -185,19 +186,47 @@ class CommerceSyncService {
       const existing = existingMap[order._id];
 
       if (existing) {
-        const normalized = this.normalizeOrder(order);
+        const normalized = this.normalizeOrder(order, existing);
         const changes = this.diffOrder(existing, normalized);
+
+        if (!changes.any) {
+          results.push(existing);
+          continue;
+        }
+
+        const historyEntries = changes.fields.map(field => ({
+          field: field.field,
+          from: field.from,
+          to: field.to,
+          actor: null,
+          actorName: 'sync',
+          changedAt: new Date(),
+          source: 'sync',
+          comment: `Sync update: ${field.field} changed from ${field.from} to ${field.to}`,
+          metadata: { trigger: 'sync', syncChanges: changes.summary },
+        }));
+
+        const $set = {};
+        for (const f of changes.fields) {
+          $set[f.field] = this.getNested(normalized, f.field);
+        }
+        $set.lastSyncedAt = new Date();
+        $set.synced = true;
+        $set.lastSyncChanges = changes.summary;
+
+        const update = { $set };
+        if (historyEntries.length > 0) {
+          update.$push = { statusHistory: { $each: historyEntries } };
+        }
 
         const updated = await CommerceOrder.findByIdAndUpdate(
           existing._id,
-          { ...normalized, lastSyncedAt: new Date(), synced: true, lastSyncChanges: changes.summary },
+          update,
           { new: true }
         );
 
-        if (changes.any) {
-          logger.info('Order updated', { orderId: order.orderId, changes: changes.fields });
-          changedOrders.push({ orderId: order.orderId, changes: changes.fields });
-        }
+        logger.info('Order updated', { orderId: order.orderId, changes: changes.fields });
+        changedOrders.push({ orderId: order.orderId, changes: changes.fields });
 
         if (changes.statusChanged) {
           await Task.updateMany(
@@ -205,6 +234,21 @@ class CommerceSyncService {
             { status: 'cancelled', completedAt: new Date() }
           );
           await this.generateTasksForOrder(updated);
+
+          const prevStatus = existing.commerce?.orderStatus || existing.orderStatus;
+          const nextStatus = normalized.commerce?.orderStatus;
+          if (nextStatus && prevStatus !== nextStatus) {
+            const isCancel = nextStatus === 'Cancelled';
+            const wasCancel = prevStatus === 'Cancelled';
+            if (isCancel || wasCancel) {
+              recoveryService.recordOrderRecovery({
+                order: updated,
+                isCancel,
+                fromStatus: prevStatus,
+                toStatus: nextStatus,
+              }).catch((err) => logger.error('Recovery record failed', { orderId: order.orderId, message: err.message }));
+            }
+          }
         }
 
         results.push(updated);
@@ -226,16 +270,24 @@ class CommerceSyncService {
   }
 
   diffOrder(existing, normalized) {
-    const tracked = ['orderStatus', 'paymentStatus', 'cancelledReason', 'cancelledBy', 'unAttendedCount', 'totalAmount'];
+    const tracked = [
+      'commerce.orderStatus', 'commerce.paymentStatus', 'commerce.cancelledReason', 'commerce.cancelledBy',
+      'commerce.unAttendedCount', 'commerce.totalAmount',
+      'workflowStage', 'workflowPriority',
+      'customer.confirmationStatus', 'vendor.vendorStatus',
+      'assignedTo', 'branch', 'team',
+    ];
     const fields = [];
     let statusChanged = false;
+    let workflowChanged = false;
 
     for (const key of tracked) {
-      const oldVal = existing[key];
-      const newVal = normalized[key];
+      const oldVal = this.getNested(existing, key);
+      const newVal = this.getNested(normalized, key);
       if (oldVal !== newVal && newVal !== undefined) {
         fields.push({ field: key, from: oldVal, to: newVal });
-        if (key === 'orderStatus') statusChanged = true;
+        if (key === 'commerce.orderStatus') statusChanged = true;
+        if (['workflowStage', 'workflowPriority', 'assignedTo'].includes(key)) workflowChanged = true;
       }
     }
 
@@ -243,44 +295,94 @@ class CommerceSyncService {
       any: fields.length > 0,
       fields,
       statusChanged,
+      workflowChanged,
       summary: fields.map(f => `${f.field}: ${f.from} → ${f.to}`).join(', '),
     };
   }
 
-  normalizeOrder(order) {
+  getNested(obj, path) {
+    return path.split('.').reduce((o, k) => (o ? o[k] : undefined), obj);
+  }
+
+  normalizeOrder(order, existing) {
+    // ponytail: preserve locally-set confirmation/vendor status across syncs —
+    // the commerce API returns undefined here, so without this every sync would
+    // clobber ops' 'confirmed'/'accepted' back to pending. Upgrade: two-way API
+    // writeback when the source supports it.
+    const existingCustomer = existing?.customer && typeof existing.customer === 'object' ? existing.customer : {};
+    const existingVendor = existing?.vendor && typeof existing.vendor === 'object' ? existing.vendor : {};
+
     const customerPhone = decodeBase64(order.customerPhone || order.phone || order.mobile || '');
     const vendorPhone = decodeBase64(order.vendorPhone || order.vendor?.phone || '');
     const customerName = decodeBase64(order.customerProfile?.name || order.customer || '');
     const vendorName = decodeBase64(order.vendor?.name || order.vendor || '');
+    const customerEmail = decodeBase64(order.customerProfile?.email || '');
+    const vendorEmail = decodeBase64(order.vendor?.email || '');
 
-    return {
+    const normalized = {
       commerceOrderId: order._id,
       orderId: order.orderId,
-      customer: customerName,
-      customerPhone,
-      vendor: vendorName,
-      vendorPhone,
-      orderStatus: order.orderStatus,
-      paymentStatus: order.paymentStatus,
-      paymentMethod: order.paymentMethod,
-      logisticsOrderId: order.logisticsOrderId,
-      externalLogisticsOrderId: order.externalLogisticsOrderId,
-      externalHeavyLogisticsId: order.externalHeavyLogisticsId,
-      externalNonHeavyLogisticsId: order.externalNonHeavyLogisticsId,
-      pickupTicketId: order.pickupTicketId,
-      totalAmount: order.totalAmount,
-      shippingAmount: order.shippingAmount,
-      unAttendedCount: order.unAttendedCount,
-      additionalPickupTimeWindow: order.additionalPickupTimeWindow,
-      coupon: order.coupon,
-      addedUser: order.addedUser,
-      items: order.items || [],
+      customer: {
+        name: customerName,
+        phone: customerPhone,
+        email: customerEmail,
+        profile: order.customerProfile || {},
+        confirmationStatus: order.confirmationStatus || existingCustomer.confirmationStatus || 'pending',
+      },
+      vendor: {
+        name: vendorName,
+        phone: vendorPhone,
+        email: vendorEmail,
+        info: order.vendor || {},
+        vendorStatus: order.vendorStatus || existingVendor.vendorStatus || 'unassigned',
+      },
+      commerce: {
+        orderStatus: order.orderStatus,
+        paymentStatus: order.paymentStatus,
+        paymentMethod: order.paymentMethod,
+        deliveryStatus: order.externalDeliveryStatus,
+        deliveryEvent: order.externalDeliveryEvent,
+        orderType: order.orderType,
+        branch: order.branch,
+        sender: order.sender,
+        receiver: order.receiver,
+        destinationBranch: order.destinationBranch,
+        totalAmount: order.totalAmount,
+        shippingAmount: order.shippingAmount,
+        unAttendedCount: order.unAttendedCount,
+        additionalPickupTimeWindow: order.additionalPickupTimeWindow,
+        coupon: order.coupon,
+        addedUser: order.addedUser,
+        items: order.items || [],
+        logisticsOrderId: order.logisticsOrderId,
+        externalLogisticsOrderId: order.externalLogisticsOrderId,
+        externalHeavyLogisticsId: order.externalHeavyLogisticsId,
+        externalNonHeavyLogisticsId: order.externalNonHeavyLogisticsId,
+        pickupTicketId: order.pickupTicketId,
+        originBranch: order.originBranch,
+        destinationBranch: order.destinationBranch,
+        shippingType: order.shippingType,
+        dispatchMode: order.dispatchMode,
+        shippingAddress: order.shippingAddress,
+        deliveryChargeBreakdown: order.deliveryChargeBreakdown,
+        cancelledBy: order.cancelledBy,
+        cancelledReason: order.cancelledReason,
+      },
       externalUpdatedAt: order.updatedAt || order.updated_at || order.lastUpdatedAt,
     };
+
+    // Compute workflow fields
+    normalized.workflowStage = this.computeWorkflowStage(normalized);
+    normalized.workflowPriority = this.computeWorkflowPriority(normalized);
+    normalized.workflowUpdatedAt = normalized.externalUpdatedAt || new Date();
+
+    return normalized;
   }
 
   async generateTasksForOrder(order) {
-    const { orderStatus, paymentStatus, paymentMethod, unAttendedCount } = order;
+    const c = order.commerce || {};
+    const nameOf = (e) => (e && typeof e === 'object' ? (e.name || '') : (e || ''));
+    const phoneOf = (e) => (e && typeof e === 'object' ? (e.phone || '') : (e || ''));
 
     const priorityMap = this.getPriorityForOrder(order);
 
@@ -288,15 +390,15 @@ class CommerceSyncService {
       _id: order.commerceOrderId,
       orderId: order.commerceOrderId,
       orderNumber: order.orderId,
-      customerName: order.customer,
-      customerPhone: order.customerPhone || '',
-      vendorName: order.vendor,
-      vendorPhone: order.vendorPhone || '',
+      customerName: nameOf(order.customer),
+      customerPhone: phoneOf(order.customer) || order.customerPhone || '',
+      vendorName: nameOf(order.vendor),
+      vendorPhone: phoneOf(order.vendor) || order.vendorPhone || '',
       customerId: order._id,
-      newStatus: order.orderStatus,
-      paymentStatus: order.paymentStatus,
-      paymentMethod: order.paymentMethod,
-      unAttendedCount: order.unAttendedCount,
+      newStatus: c.orderStatus || order.orderStatus,
+      paymentStatus: c.paymentStatus || order.paymentStatus,
+      paymentMethod: c.paymentMethod || order.paymentMethod,
+      unAttendedCount: c.unAttendedCount ?? order.unAttendedCount,
       assigneeId: null,
       assigneeName: null,
     };
@@ -317,7 +419,12 @@ class CommerceSyncService {
   }
 
   getPriorityForOrder(order) {
-    const { orderStatus, paymentStatus, paymentMethod, unAttendedCount, totalAmount } = order;
+    const c = order.commerce || {};
+    const orderStatus = c.orderStatus || order.orderStatus;
+    const paymentStatus = c.paymentStatus || order.paymentStatus;
+    const paymentMethod = c.paymentMethod || order.paymentMethod;
+    const unAttendedCount = c.unAttendedCount ?? order.unAttendedCount;
+    const totalAmount = c.totalAmount ?? order.totalAmount;
     let priority = 'medium';
     let taskType = 'customer-confirmation';
     let slaMinutes = this.slaDefaults['customer-confirmation'];
@@ -383,27 +490,92 @@ class CommerceSyncService {
     return { priority, slaMinutes, taskType };
   }
 
+  computeWorkflowStage(order) {
+    const cs = order.customer?.confirmationStatus || 'pending';
+    const vs = order.vendor?.vendorStatus || 'unassigned';
+    const os = (order.commerce?.orderStatus || '').toLowerCase();
+
+    if (cs === 'pending' && os === 'pending') return 'pending_confirmation';
+    if (cs === 'confirmed' && vs === 'accepted' && ['pending', 'processing'].includes(os)) return 'pending_review';
+    if (cs === 'confirmed' && ['pending', ''].includes(os)) return 'confirmed_unprocessed';
+    if (os === 'delivered') return 'delivered_followup';
+    if (cs === 'confirmed') return 'done';
+    return 'other';
+  }
+
+  computeWorkflowPriority(order) {
+    return this.getPriorityForOrder(order).priority;
+  }
+
   async getOrderStatus(commerceOrderId) {
     const order = await CommerceOrder.findOne({ commerceOrderId });
     return order;
   }
 
   async getOrders(filters = {}) {
-    const { status, paymentStatus, vendor, customer, page = 1, limit = 20 } = filters;
+    const { status, paymentStatus, vendor, customer, segment, search, page = 1, limit = 20, rbac } = filters;
     const query = {};
 
-    if (status) query.orderStatus = status;
-    if (paymentStatus) query.paymentStatus = paymentStatus;
-    if (vendor) query.vendor = new RegExp(vendor, 'i');
-    if (customer) query.customer = new RegExp(customer, 'i');
+    if (rbac && Object.keys(rbac).length) {
+      query.$and = [rbac];
+    }
+
+    if (segment) query.workflowStage = segment;
+
+    if (status) {
+      query.$and = [
+        ...(query.$and || []),
+        { $or: [{ orderStatus: status }, { 'commerce.orderStatus': status }] },
+      ];
+    }
+    if (paymentStatus) {
+      query.$and = [
+        ...(query.$and || []),
+        { $or: [{ paymentStatus }, { 'commerce.paymentStatus': paymentStatus }] },
+      ];
+    }
+    if (vendor) {
+      const regex = new RegExp(vendor, 'i');
+      query.$and = [
+        ...(query.$and || []),
+        { $or: [{ vendor: regex }, { 'vendor.name': regex }] },
+      ];
+    }
+    if (customer) {
+      const regex = new RegExp(customer, 'i');
+      query.$and = [
+        ...(query.$and || []),
+        { $or: [{ customer: regex }, { 'customer.name': regex }] },
+      ];
+    }
+
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      query.$and = [
+        ...(query.$and || []),
+        {
+          $or: [
+            { commerceOrderId: regex },
+            { orderId: regex },
+            { customer: regex },
+            { 'customer.name': regex },
+            { customerPhone: regex },
+            { 'customer.phone': regex },
+          ],
+        },
+      ];
+    }
 
     const skip = (page - 1) * limit;
 
-    let orders = await CommerceOrder.find(query)
-      .sort({ externalUpdatedAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean();
+    const [orders, total] = await Promise.all([
+      CommerceOrder.find(query)
+        .sort({ externalUpdatedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      CommerceOrder.countDocuments(query),
+    ]);
 
     const orderIds = orders.map(o => o.commerceOrderId);
     const tasks = await Task.find({
@@ -414,14 +586,13 @@ class CommerceSyncService {
     for (const t of tasks) {
       taskMap[t.sourceOrder?.orderId] = { taskId: t._id, taskType: t.type };
     }
-    orders = orders.map(o => ({
+    const enrichedOrders = orders.map(o => ({
       ...o,
       taskId: taskMap[o.commerceOrderId]?.taskId || null,
       activeTaskType: taskMap[o.commerceOrderId]?.taskType || null,
     }));
 
-    const total = await CommerceOrder.countDocuments(query);
-    return { orders, total, page, limit };
+    return { orders: enrichedOrders, total, page, limit };
   }
 
   async syncExternalNonHeavy(options = {}) {
@@ -475,17 +646,17 @@ class CommerceSyncService {
               filter: { commerceOrderId: item._id },
               update: {
                 $set: {
-                  externalDeliveryStatus: item.externalDeliveryStatus || null,
-                  externalDeliveryEvent: item.externalDeliveryEvent || null,
-                  orderType: item.orderType || null,
-                  branch: item.branch || null,
-                  sender: item.sender || null,
-                  receiver: item.receiver || null,
-                  destinationBranch: item.destinationBranch || null,
-                  shippingType: item.shippingType || null,
-                  dispatchMode: item.dispatchMode || null,
-                  externalNonHeavyLogisticsId: item.externalNonHeavyLogisticsId || null,
-                  pickupTicketId: item.pickupTicketId || null,
+                  'commerce.deliveryStatus': item.externalDeliveryStatus || null,
+                  'commerce.deliveryEvent': item.externalDeliveryEvent || null,
+                  'commerce.orderType': item.orderType || null,
+                  'commerce.branch': item.branch || null,
+                  'commerce.sender': item.sender || null,
+                  'commerce.receiver': item.receiver || null,
+                  'commerce.destinationBranch': item.destinationBranch || null,
+                  'commerce.shippingType': item.shippingType || null,
+                  'commerce.dispatchMode': item.dispatchMode || null,
+                  'commerce.externalNonHeavyLogisticsId': item.externalNonHeavyLogisticsId || null,
+                  'commerce.pickupTicketId': item.pickupTicketId || null,
                   externalUpdatedAt: item.updatedAt || item.updated_at || null,
                   lastSyncedAt: new Date(),
                 },

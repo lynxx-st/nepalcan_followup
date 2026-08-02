@@ -47,7 +47,7 @@ export default function Recovery() {
   const total = records.length;
   const recovered = records.filter((r) => r.outcome === 'recovered').length;
   const lost = records.filter((r) => r.outcome === 'lost').length;
-  const pending = records.filter((r) => r.outcome === 'pending' || !r.outcome).length;
+  const pending = records.filter((r) => !r.outcome || r.outcome === 'pending' || r.outcome === 'in-progress').length;
   const recoveryRate = recovered + lost > 0 ? Math.round((recovered / (recovered + lost)) * 100) : 0;
   const totalRecoveredRevenue = records
     .filter((r) => r.outcome === 'recovered')
@@ -60,7 +60,13 @@ export default function Recovery() {
   });
 
   const filteredRecords = records.filter((r) => {
-    if (filterOutcome !== 'all' && r.outcome !== filterOutcome) return false;
+    if (filterOutcome !== 'all') {
+      const matches =
+        filterOutcome === 'pending'
+          ? !r.outcome || r.outcome === 'pending' || r.outcome === 'in-progress'
+          : r.outcome === filterOutcome;
+      if (!matches) return false;
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       return (
@@ -207,7 +213,7 @@ export default function Recovery() {
                     <XCircle className="w-3.5 h-3.5" /> Lost
                   </span>
                 )}
-                {(!record.outcome || record.outcome === 'pending') && (
+                {(!record.outcome || record.outcome === 'pending' || record.outcome === 'in-progress') && (
                   <div className="flex items-center gap-2">
                     <button onClick={() => handleUpdate(record._id, 'recovered')}
                       className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer">

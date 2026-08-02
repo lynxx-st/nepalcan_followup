@@ -1,6 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const seedSuperAdmin = require('../seed/seed-admin.service');
+const adminController = require('../controller/admin.controller');
+const { authenticate, requireSuperAdmin } = require('../../../src/middleware/auth');
+
+router.get('/branches', authenticate, requireSuperAdmin, adminController.listBranches);
+router.get('/users', authenticate, requireSuperAdmin, adminController.listUsers);
+router.post('/users', authenticate, requireSuperAdmin, adminController.createUser);
+router.patch('/users/:id', authenticate, requireSuperAdmin, adminController.updateUser);
+router.post('/users/:id/reset-password', authenticate, requireSuperAdmin, adminController.resetPassword);
+
 const seedTaskRules = require('../../rules/seed/seed-rules.service');
 const { Task, CommerceOrder } = require('../../../database/models');
 

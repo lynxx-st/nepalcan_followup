@@ -5,6 +5,7 @@ import { dashboardApi, commerceApi, taskApi } from '../services/api';
 import { useSimulatedTime } from '../hooks/useSimulatedTime';
 import SLACountdown from '../components/SLACountdown';
 import { getSLAInfo } from '../utils/ruleEngine';
+import { entityName } from '../utils/order';
 import {
   PhoneCall, Store, Clock, RefreshCw, Star, AlertTriangle,
   Zap, ArrowRight, CheckCircle2, TrendingUp, Filter, X, Truck,
@@ -207,6 +208,7 @@ export default function TodayWork() {
           ) : (
             filteredOrders.map((order: any) => {
               const isOverdue = order.dueAt && getSLAInfo(order.dueAt, simulatedTimeIso).isOverdue;
+              const orderStatus = order.commerce?.orderStatus || order.orderStatus || '';
               return (
                 <div
                   key={order._id || order.commerceOrderId}
@@ -218,11 +220,11 @@ export default function TodayWork() {
                       <div className="flex flex-wrap items-center gap-2 mb-1">
                         <span className="font-mono text-sm font-bold text-red-600">#{order.orderId || order.orderNumber}</span>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                          order.orderStatus === 'Cancelled' ? 'bg-red-100 text-red-700' :
-                          order.orderStatus === 'Delivered' ? 'bg-emerald-100 text-emerald-700' :
-                          order.orderStatus === 'Pending' ? 'bg-amber-100 text-amber-700' :
+                          orderStatus === 'Cancelled' ? 'bg-red-100 text-red-700' :
+                          orderStatus === 'Delivered' ? 'bg-emerald-100 text-emerald-700' :
+                          orderStatus === 'Pending' ? 'bg-amber-100 text-amber-700' :
                           'bg-slate-100 text-slate-600'
-                        }`}>{order.orderStatus}</span>
+                        }`}>{orderStatus}</span>
                         {order.priority && (
                           <span className={`text-[10px] font-bold text-white px-2 py-0.5 rounded ${
                             order.priority === 'critical' ? 'bg-red-500' :
@@ -232,15 +234,15 @@ export default function TodayWork() {
                         )}
                       </div>
                       <div className="text-sm text-slate-700">
-                        <span className="font-medium">{order.customer || order.customerName || '-'}</span>
-                        {order.customerPhone && (
-                          <a href={`tel:${order.customerPhone}`} onClick={(e) => e.stopPropagation()}
-                            className="text-red-600 ml-2 text-xs">📞 {order.customerPhone}</a>
+                        <span className="font-medium">{entityName(order.customer, order.customerName) || '-'}</span>
+                        {(order.customer?.phone || order.customerPhone) && (
+                          <a href={`tel:${order.customer?.phone || order.customerPhone}`} onClick={(e) => e.stopPropagation()}
+                            className="text-red-600 ml-2 text-xs">📞 {order.customer?.phone || order.customerPhone}</a>
                         )}
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 mt-1">
-                        <span>Rs {order.totalAmount || order.totalAmount || 0}</span>
-                        {order.vendor && <span>Vendor: {order.vendor}</span>}
+                        <span>Rs {order.totalAmount || order.commerce?.totalAmount || 0}</span>
+                        {entityName(order.vendor, order.vendorName) && <span>Vendor: {entityName(order.vendor, order.vendorName)}</span>}
                         {order.shippingType && <span>{order.shippingType}</span>}
                       </div>
                     </div>

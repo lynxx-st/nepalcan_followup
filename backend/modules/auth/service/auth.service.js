@@ -17,11 +17,19 @@ class AuthService {
       await admin.save();
 
       const token = jwt.sign(
-        { sub: admin._id, email: admin.email, role: admin.role, type: 'admin' },
+        { 
+          sub: admin._id, 
+          name: admin.name || null,
+          email: admin.email, 
+          role: admin.role, 
+          type: 'admin',
+          branches: admin.branches || [],
+          team: admin.team || null
+        },
         config.jwtSecret,
         { expiresIn: config.jwtExpiry }
       );
-      return { token, user: { id: admin._id, email: admin.email, role: admin.role, type: 'admin' } };
+      return { token, user: { id: admin._id, name: admin.name || null, email: admin.email, role: admin.role, type: 'admin', branches: admin.branches || [], team: admin.team || null } };
     }
 
     const body = JSON.stringify({ email, password });

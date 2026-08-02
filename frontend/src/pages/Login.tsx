@@ -25,7 +25,7 @@ export default function Login() {
       localStorage.setItem('token', data.data.token);
       if (data.data.user) localStorage.setItem('user', JSON.stringify(data.data.user));
       toast.success('Signed in successfully');
-      navigate('/today');
+      window.location.href = '/today';
     } catch (err: any) {
       const msg = err.response?.data?.error?.message || 'Login failed';
       setError(msg);

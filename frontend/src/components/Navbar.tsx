@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   CheckSquare, Zap, Layers, Sliders, RotateCcw, ShoppingBag, BarChart3,
-  Clock, PlusCircle, Search, Menu, X, LogOut, Bell, Settings, RefreshCw,
+  Clock, PlusCircle, Search, Menu, X, LogOut, Bell, Settings, RefreshCw, Users, Star,
 } from 'lucide-react';
 import { useSimulatedTime } from '../hooks/useSimulatedTime';
 import { io, Socket } from 'socket.io-client';
@@ -13,6 +13,7 @@ const NAV_LINKS = [
   { to: '/next', label: 'Next Call', icon: Zap },
   { to: '/queues', label: 'Task Queues', icon: Layers },
   { to: '/orders', label: 'Orders', icon: ShoppingBag },
+  { to: '/reviews', label: 'Reviews', icon: Star },
   { to: '/recovery', label: 'Recovery', icon: RotateCcw },
   { to: '/rules', label: 'Rules', icon: Sliders },
   { to: '/stats', label: 'Analytics', icon: BarChart3 },
@@ -29,6 +30,22 @@ export default function Navbar() {
   const [showNotif, setShowNotif] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const isSuperAdmin = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || 'null')?.role === 'super-admin';
+    } catch { return false; }
+  })();
+  const links = isSuperAdmin
+    ? [...NAV_LINKS, { to: '/users', label: 'Users', icon: Users }]
+    : NAV_LINKS;
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    const q = searchQuery.trim();
+    navigate(q ? `/orders?search=${encodeURIComponent(q)}` : '/orders');
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -99,6 +116,9 @@ export default function Navbar() {
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-red-300" />
             <input
               type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
               placeholder="Search order #, phone, customer..."
               className="w-full bg-red-700/80 border border-red-500 rounded-lg pl-9 pr-4 py-1.5 text-sm text-white placeholder-red-200 focus:outline-none focus:ring-2 focus:ring-white"
             />
@@ -183,7 +203,7 @@ export default function Navbar() {
 
       <nav className="bg-red-700/90 backdrop-blur border-t border-red-500 px-4 sm:px-6 lg:px-8 overflow-x-auto">
         <div className="max-w-7xl mx-auto flex space-x-1 sm:space-x-2 py-2">
-          {NAV_LINKS.map((link) => {
+          {links.map((link) => {
             const Icon = link.icon;
             const isActive = location.pathname === link.to;
             return (
@@ -207,7 +227,7 @@ export default function Navbar() {
 
       {menuOpen && (
         <div className="sm:hidden border-t border-red-500 bg-red-700 pb-3 px-4">
-          {NAV_LINKS.map((link) => {
+          {links.map((link) => {
             const Icon = link.icon;
             const isActive = location.pathname === link.to;
             return (

@@ -8,11 +8,13 @@ import NextCall from './pages/NextCall';
 import TaskQueues from './pages/TaskQueues';
 import Orders from './pages/Orders';
 import OrderDetail from './pages/OrderDetail';
+import Reviews from './pages/Reviews';
 import TaskDetail from './pages/TaskDetail';
 import Recovery from './pages/Recovery';
 import Rules from './pages/Rules';
 import Stats from './pages/Stats';
 import Settings from './pages/Settings';
+import Users from './pages/Users';
 import Login from './pages/Login';
 
 function AppRoutes() {
@@ -27,11 +29,13 @@ function AppRoutes() {
       <Route path="/queues" element={<TaskQueues />} />
       <Route path="/orders" element={<Orders />} />
       <Route path="/orders/:commerceOrderId" element={<OrderDetail />} />
+      <Route path="/reviews" element={<Reviews />} />
       <Route path="/tasks/:id" element={<TaskDetail />} />
       <Route path="/recovery" element={<Recovery />} />
       <Route path="/rules" element={<Rules />} />
       <Route path="/stats" element={<Stats />} />
       <Route path="/settings" element={<Settings />} />
+      <Route path="/users" element={<Users />} />
     </Routes>
   );
 }

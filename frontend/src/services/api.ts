@@ -11,11 +11,23 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+let authRedirecting = false;
+
 api.interceptors.response.use(
   (response) => response.data,
   (error: AxiosError) => {
     const message = (error.response?.data as any)?.error?.message || error.message;
     console.error('API error:', message);
+    const status = error.response?.status;
+    const url = error.config?.url || '';
+    if (status === 401 && !url.includes('/auth/login') && !authRedirecting) {
+      authRedirecting = true;
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
     return Promise.reject(error);
   }
 );
@@ -45,11 +57,19 @@ function invalidateCache(pattern?: string) {
   }
 }
 
+function buildParams(filters: Record<string, any>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined || value === null || value === '') continue;
+    params.set(key, String(value));
+  }
+  return params.toString();
+}
+
 export const taskApi = {
   create: (data: any) => api.post('/v1/tasks', data),
   list: (filters: Record<string, any> = {}) => {
-    const params = new URLSearchParams(filters).toString();
-    return api.get(`/v1/tasks?${params}`);
+    return api.get(`/v1/tasks?${buildParams(filters)}`);
   },
   getById: (id: string) => api.get(`/v1/tasks/${id}`),
   getNext: () => api.get('/v1/tasks/next'),
@@ -86,18 +106,18 @@ export const dashboardApi = {
 export const commerceApi = {
   login: () => api.post('/v1/commerce/login'),
   syncOrders: (options: Record<string, any> = {}) => {
-    const params = new URLSearchParams(options).toString();
-    return api.post(`/v1/commerce/sync?${params}`);
+    return api.post(`/v1/commerce/sync?${buildParams(options)}`);
   },
   syncAll: () => api.post('/v1/commerce/sync/all'),
   getSyncStatus: () => api.get('/v1/commerce/sync/status'),
   getOrders: (filters: Record<string, any> = {}) => {
     const key = `getOrders:${JSON.stringify(filters)}`;
     return cachedGet(key, () => {
-      const params = new URLSearchParams(filters).toString();
-      return api.get(`/v1/commerce/orders?${params}`);
+      return api.get(`/v1/commerce/orders?${buildParams(filters)}`);
     });
   },
+  getSegmentCounts: () => api.get('/v1/commerce/orders/segment-counts'),
+  getReviews: (filters: Record<string, any> = {}) => api.get(`/v1/commerce/reviews?${buildParams(filters)}`),
   getOrderById: (id: string) => {
     const key = `getOrderById:${id}`;
     return cachedGet(key, () => api.get(`/v1/commerce/orders/${id}`));
@@ -131,6 +151,14 @@ export const authApi = {
 export const settingsApi = {
   get: () => api.get('/v1/settings'),
   update: (data: Record<string, any>) => api.put('/v1/settings', data),
+};
+
+export const adminApi = {
+  listUsers: () => api.get('/v1/admin/users'),
+  createUser: (data: Record<string, any>) => api.post('/v1/admin/users', data),
+  updateUser: (id: string, data: Record<string, any>) => api.patch(`/v1/admin/users/${id}`, data),
+  resetPassword: (id: string, password: string) => api.post(`/v1/admin/users/${id}/reset-password`, { password }),
+  listBranches: () => api.get('/v1/admin/branches'),
 };
 
 export default api;

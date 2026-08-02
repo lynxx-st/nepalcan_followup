@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { commerceApi, noteApi, taskApi } from '../services/api';
+import { entityName } from '../utils/order';
 import {
   PhoneCall, CheckCircle2, XCircle, Clock, Calendar, AlertTriangle,
   PhoneOff, User, Store, PackageCheck, ThumbsUp, ArrowLeft,
@@ -36,6 +37,8 @@ export default function OrderDetail() {
   const [vendorCalling, setVendorCalling] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewText, setReviewText] = useState('');
 
   useEffect(() => {
     const fetch = async () => {
@@ -93,6 +96,23 @@ export default function OrderDetail() {
     }
   };
 
+  const handleSaveReview = async () => {
+    if (!reviewText.trim()) return;
+    setSaving(true);
+    try {
+      await updateStatus({ review: reviewText.trim(), note: `Customer review: ${reviewText.trim()}` });
+      setReviewing(false);
+      setReviewText('');
+      const detailRes: any = await commerceApi.getDetail(commerceOrderId!);
+      setOrder((detailRes as any).data);
+      toast.success('Review saved ✓');
+    } catch {
+      toast.error('Failed to save review');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleVendorOutcome = async (value: string) => {
     setVendorCalling(false);
     if (value === 'accepted') {
@@ -140,9 +160,10 @@ export default function OrderDetail() {
 
   const cs = customerStatus || order.confirmationStatus || 'pending';
   const vs = vendorStatus || order.vendorStatus || 'unassigned';
-  const os = order.orderStatus || 'Pending';
-  const vendor = order.vendor || {};
-  const customer = order.customerProfile || {};
+  const os = order.commerce?.orderStatus || order.orderStatus || 'Pending';
+  const isDelivered = ['Delivered', 'Shipped', 'Return Delivered'].includes(os);
+  const vendor = order.vendor && typeof order.vendor === 'object' ? order.vendor : (order.vendorInfo || {});
+  const customer = typeof order.customer === 'object' && order.customer !== null ? order.customer : (order.customerProfile || {});
   const items = order.items || [];
   const subtotal = items.reduce((s: number, i: any) => s + (i.quantity || 1) * (i.price || 0), 0);
   const deliveryCharge = order.deliveryChargeBreakdown?.customerDeliveryCharge || 0;
@@ -215,7 +236,7 @@ export default function OrderDetail() {
           </div>
 
           <div className="space-y-1 text-sm">
-            <p className="font-bold text-slate-900">{customer.name || order.customer || '-'}</p>
+            <p className="font-bold text-slate-900">{customer.name || entityName(order.customer) || '-'}</p>
             <p className="text-slate-600 font-mono text-xs">{customer.phone || order.customerPhone || '-'}</p>
             {customer.email && <p className="text-slate-500 text-xs">{customer.email}</p>}
             {(order.shippingAddress) && (
@@ -225,6 +246,41 @@ export default function OrderDetail() {
             )}
           </div>
 
+          {isDelivered ? (
+            <div className="space-y-3">
+              {order.review ? (
+                <div className="flex items-start gap-2 text-emerald-700 bg-emerald-50 p-3 rounded-xl border border-emerald-200">
+                  <ThumbsUp className="w-5 h-5 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-bold">Customer review recorded</p>
+                    <p className="text-[11px] text-emerald-600 mt-1">{order.review}</p>
+                  </div>
+                </div>
+              ) : reviewing ? (
+                <div className="space-y-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <p className="text-xs font-bold text-slate-500">Call customer & record their review:</p>
+                  <textarea value={reviewText} onChange={(e) => setReviewText(e.target.value)}
+                    placeholder="What did the customer say about the delivery?"
+                    rows={3}
+                    className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <div className="flex gap-2">
+                    <button onClick={handleSaveReview} disabled={saving || !reviewText.trim()}
+                      className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2.5 rounded-lg disabled:opacity-50 cursor-pointer">
+                      {saving ? 'Saving...' : 'Save Review'}
+                    </button>
+                    <button onClick={() => { setReviewing(false); setReviewText(''); }}
+                      className="text-xs text-slate-400 hover:text-slate-600 px-3 cursor-pointer">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => { callPhone(customer.phone || order.customerPhone); setReviewing(true); }}
+                  className="w-full flex items-center justify-center gap-2 bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-extrabold text-sm px-4 py-3 rounded-xl shadow-md transition-all cursor-pointer">
+                  <PhoneCall className="w-5 h-5" /> Call Customer &amp; Get Review
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
           {cs === 'pending' && !customerCalling && (
             <button onClick={() => { callPhone(customer.phone || order.customerPhone); setCustomerCalling(true); }}
               className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-extrabold text-sm px-4 py-3 rounded-xl shadow-md transition-all cursor-pointer">
@@ -267,6 +323,8 @@ export default function OrderDetail() {
                 <p className="text-[11px] text-rose-600 mt-1">⚠️ Please make hold in NepalCan system</p>
               </div>
             </div>
+          )}
+            </>
           )}
         </div>
 
@@ -467,8 +525,8 @@ export default function OrderDetail() {
             <div key={i} className="flex gap-3 text-sm items-start">
               <div className="w-2 h-2 mt-1.5 rounded-full bg-indigo-500 shrink-0" />
               <div className="min-w-0">
-                <p className="text-slate-800 text-xs">{n.note}</p>
-                <p className="text-[10px] text-slate-400">{n.actor} · {n.createdAt ? new Date(n.createdAt).toLocaleString() : ''}</p>
+                <p className="text-slate-800 text-xs">{n.comment || n.note || n.message}</p>
+                <p className="text-[10px] text-slate-400">{n.actorName || n.actor || n.addedBy || n.authorName || 'staff'} · {n.createdAt ? new Date(n.createdAt).toLocaleString() : ''}</p>
               </div>
             </div>
           ))}

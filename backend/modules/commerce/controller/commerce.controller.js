@@ -4,6 +4,50 @@ const { commerceSync } = require('../service/commerce.sync.service');
 const { CommerceOrder, Task } = require('../../../database/models');
 const config = require('../../../config');
 const { decodeBase64 } = require('../../../utils/decode');
+const recoveryService = require('../../../modules/recovery/service/recovery.service');
+
+function mergeNotes(localNotes = [], apiNotes = []) {
+  const app = localNotes.map((n) => ({
+    note: n.note,
+    actor: n.actor,
+    actorName: n.actorName,
+    createdAt: n.createdAt,
+    source: 'internal',
+  }));
+  const api = apiNotes.map((n) => ({
+    note: n.comment || n.note,
+    actor: n.addedBy || n.authorName || n.actor,
+    createdAt: n.createdAt,
+    source: 'api',
+  }));
+  return [...api, ...app].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+}
+
+function buildRbacQuery(user) {
+  if (!user) return {};
+  switch (user.role) {
+    case 'super-admin':
+      return {};
+    case 'admin':
+      return user.branches?.length
+        ? {
+            $or: [
+              { branch: { $in: user.branches } },
+              { 'branch.name': { $in: user.branches } },
+              { 'commerce.branch': { $in: user.branches } },
+              { 'commerce.branch.name': { $in: user.branches } },
+            ],
+          }
+        : {};
+    case 'manager':
+      return user.team
+        ? { $or: [{ team: user.team }, { assignedTo: user._id }, { assignedTo: { $exists: false } }] }
+        : { $or: [{ assignedTo: user._id }, { assignedTo: { $exists: false } }] };
+    case 'staff':
+    default:
+      return { $or: [{ assignedTo: user._id }, { assignedTo: { $exists: false } }] };
+  }
+}
 
 async function login(req, res) {
   try {
@@ -63,40 +107,121 @@ async function syncExternalNonHeavy(req, res) {
 
 async function getOrders(req, res) {
   try {
-    const { status, paymentStatus, vendor, customer, page, limit } = req.query;
-
-    if (vendor) {
-      if (!/^[a-zA-Z0-9\s\-_.,']+$/.test(vendor)) {
-        return res.status(400).json({
-          success: false,
-          error: { message: 'Invalid vendor filter' },
-        });
-      }
-    }
-
-    if (customer) {
-      if (!/^[a-zA-Z0-9\s\-_.,']+$/.test(customer)) {
-        return res.status(400).json({
-          success: false,
-          error: { message: 'Invalid customer filter' },
-        });
-      }
-    }
-
-    const result = await commerceSync.getOrders({
+    const { 
+      segment, search, page, limit, 
+      status, paymentStatus, vendor, customer 
+    } = req.query;
+    
+    const rbacQuery = buildRbacQuery(req.user);
+    
+    const filters = {
+      rbac: buildRbacQuery(req.user),
+      segment,
+      search,
       status,
       paymentStatus,
       vendor,
       customer,
       page: Math.max(1, parseInt(page) || 1),
-      limit: Math.max(1, Math.min(100, parseInt(limit) || 20)),
-    });
+      limit: Math.min(100, Math.max(1, parseInt(limit) || 20))
+    };
+    
+    const result = await commerceSync.getOrders(filters);
     res.json({ success: true, data: result });
   } catch (error) {
     res.status(500).json({
       success: false,
       error: { message: error.message },
     });
+  }
+}
+
+async function getReviews(req, res) {
+  try {
+    const { search, page, limit } = req.query;
+
+    const query = {
+      review: { $nin: [null, ''] },
+    };
+    const rbac = buildRbacQuery(req.user);
+    if (rbac && Object.keys(rbac).length) {
+      query.$and = [rbac];
+    }
+
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      query.$and = [
+        ...(query.$and || []),
+        {
+          $or: [
+            { commerceOrderId: regex },
+            { orderId: regex },
+            { orderNumber: regex },
+            { 'customer.name': regex },
+            { 'customer.phone': regex },
+          ],
+        },
+      ];
+    }
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [orders, total] = await Promise.all([
+      CommerceOrder.find(query)
+        .select('commerceOrderId orderId orderNumber review customer updatedAt')
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      CommerceOrder.countDocuments(query),
+    ]);
+
+    const reviews = orders.map((o) => ({
+      commerceOrderId: o.commerceOrderId,
+      orderId: o.orderId,
+      orderNumber: o.orderNumber,
+      customerName: o.customer?.name || '',
+      customerPhone: o.customer?.phone || '',
+      review: o.review || o.customer?.review || '',
+      updatedAt: o.updatedAt,
+    }));
+
+    res.json({ success: true, data: { reviews, total, page: pageNum, limit: limitNum } });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: { message: error.message },
+    });
+  }
+}
+
+async function getSegmentCounts(req, res) {
+  try {
+    const rbacQuery = buildRbacQuery(req.user);
+    
+    const counts = await CommerceOrder.aggregate([
+      { $match: rbacQuery },
+      { $group: { _id: '$workflowStage', count: { $sum: 1 } } }
+    ]);
+    
+    const result = {
+      pending_confirmation: 0,
+      pending_review: 0,
+      confirmed_unprocessed: 0,
+      delivered_followup: 0,
+      done: 0,
+      other: 0
+    };
+    
+    for (const c of counts) {
+      if (result.hasOwnProperty(c._id)) result[c._id] = c.count;
+    }
+    
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: error.message } });
   }
 }
 
@@ -155,7 +280,7 @@ async function getOrderDetail(req, res) {
   try {
     const { commerceOrderId } = req.params;
 
-    const existing = await CommerceOrder.findOne({ commerceOrderId });
+    const existing = await CommerceOrder.findOne({ commerceOrderId }).select('+rawApiData');
 
     const activeTask = existing ? await Task.findOne({
       'sourceOrder.orderId': commerceOrderId,
@@ -172,113 +297,129 @@ async function getOrderDetail(req, res) {
       const decodedCustEmail = decodeBase64(raw.customerProfile?.email);
       const decodedVendEmail = decodeBase64(raw.vendor?.email);
 
+      const existingCustomerName = typeof existing.customer === 'object' ? existing.customer.name : existing.customer;
+      const existingVendorName = typeof existing.vendor === 'object' ? existing.vendor.name : existing.vendor;
       const needsUpdate =
-        existing.customerPhone !== decodedCustPhone ||
-        existing.vendorPhone !== decodedVendPhone ||
-        existing.customer !== decodedCustName ||
-        existing.vendor !== decodedVendName;
+        existing.customer?.phone !== decodedCustPhone ||
+        existing.vendor?.phone !== decodedVendPhone ||
+        existingCustomerName !== decodedCustName ||
+        existingVendorName !== decodedVendName;
       if (needsUpdate) {
         await CommerceOrder.findOneAndUpdate(
           { commerceOrderId },
-          { $set: { customerPhone: decodedCustPhone, vendorPhone: decodedVendPhone, customer: decodedCustName, vendor: decodedVendName } }
+          { $set: { 'customer.phone': decodedCustPhone, 'vendor.phone': decodedVendPhone, 'customer.name': decodedCustName, 'vendor.name': decodedVendName } }
         ).catch(() => {});
       }
 
       const cached = {
         ...raw,
-        confirmationStatus: existing.confirmationStatus || 'pending',
-        vendorStatus: existing.vendorStatus || 'unassigned',
-        customer: existing.customer || decodedCustName,
-        customerPhone: existing.customerPhone || decodedCustPhone,
-        vendorName: existing.vendor || decodedVendName,
-        vendorPhone: existing.vendorPhone || decodedVendPhone,
+        notes: mergeNotes(existing.notes, raw.notes),
+        confirmationStatus: existing.customer?.confirmationStatus || 'pending',
+        vendorStatus: existing.vendor?.vendorStatus || 'unassigned',
+        review: existing?.review || existing?.customer?.review,
+        customer: (typeof existing.customer === 'object' ? existing.customer.name : existing.customer) || decodedCustName,
+        customerPhone: existing.customer?.phone || existing.customerPhone || decodedCustPhone,
+        vendorName: (typeof existing.vendor === 'object' ? existing.vendor.name : existing.vendor) || decodedVendName,
+        vendorPhone: existing.vendor?.phone || existing.vendorPhone || decodedVendPhone,
         customerProfile: { ...raw.customerProfile, phone: decodedCustPhone, name: decodedCustName, email: decodedCustEmail },
         vendor: { ...raw.vendor, phone: decodedVendPhone, name: decodedVendName, email: decodedVendEmail },
-        externalDeliveryStatus: existing.externalDeliveryStatus,
-        externalDeliveryEvent: existing.externalDeliveryEvent,
-        orderType: existing.orderType,
-        branch: existing.branch,
-        sender: existing.sender,
-        receiver: existing.receiver,
-        destinationBranch: existing.destinationBranch,
-        externalNonHeavyLogisticsId: existing.externalNonHeavyLogisticsId,
-        pickupTicketId: existing.pickupTicketId,
+        externalDeliveryStatus: existing.commerce?.deliveryStatus,
+        externalDeliveryEvent: existing.commerce?.deliveryEvent,
+        orderType: existing.commerce?.orderType,
+        branch: existing.commerce?.branch || existing.branch,
+        sender: existing.commerce?.sender,
+        receiver: existing.commerce?.receiver,
+        destinationBranch: existing.commerce?.destinationBranch,
+        externalNonHeavyLogisticsId: existing.commerce?.externalNonHeavyLogisticsId,
+        pickupTicketId: existing.commerce?.pickupTicketId,
         activeTaskId: activeTask?._id || null,
       };
       return res.json({ success: true, data: cached, cached: true });
     }
 
     // Uncached path: fetch from API, decode, store, return decoded
-    const token = await commerceAuth.getToken();
-    const response = await axios.get(
-      `${config.commerceApiBase}/${commerceOrderId}`,
-      { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
-    );
-
-    const richData = response.data;
-
-    const decodedCustPhone = decodeBase64(richData.customerProfile?.phone);
-    const decodedVendPhone = decodeBase64(richData.vendor?.phone);
-    const decodedCustName = decodeBase64(richData.customerProfile?.name || richData.customer);
-    const decodedVendName = decodeBase64(richData.vendor?.name || richData.vendor);
-    const decodedCustEmail = decodeBase64(richData.customerProfile?.email);
-    const decodedVendEmail = decodeBase64(richData.vendor?.email);
-
-    await CommerceOrder.findOneAndUpdate(
-      { commerceOrderId },
-      {
-        $set: {
-          customer: decodedCustName,
-          customerPhone: decodedCustPhone,
-          vendor: decodedVendName,
-          vendorPhone: decodedVendPhone,
-          vendorInfo: richData.vendor || {},
-          customerProfile: { ...richData.customerProfile, phone: decodedCustPhone, name: decodedCustName, email: decodedCustEmail },
-          originBranch: richData.originBranch || {},
-          destinationBranch: richData.destinationBranch || {},
-          shippingType: richData.shippingType || '',
-          dispatchMode: richData.dispatchMode || '',
-          shippingAddress: richData.shippingAddress || {},
-          deliveryChargeBreakdown: richData.deliveryChargeBreakdown || {},
-          cancelledBy: richData.cancelledBy || '',
-          cancelledReason: richData.cancelledReason || '',
-          statusHistory: richData.statusHistory || [],
-          items: (richData.items || []).map((item) => ({
-            product: item.product || {},
-            quantity: item.quantity || 0,
-            price: item.price || 0,
-            images: item.product?.productImages || [],
-            variant: item.variant || {},
-          })),
-          rawApiData: richData,
-          lastSyncedAt: new Date(),
-        },
+    let richData = null;
+    try {
+      const token = await commerceAuth.getToken();
+      const response = await axios.get(
+        `${config.commerceApiBase}/${commerceOrderId}`,
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
+      );
+      richData = response.data;
+    } catch (error) {
+      if (!existing) {
+        return res.status(404).json({ success: false, error: { message: 'Order not found' } });
       }
-    );
+      console.error(`getOrderDetail: external fetch failed for ${commerceOrderId}: ${error.message}`);
+    }
 
-    // Return DECODED response
-    const decodedResponse = {
-      ...richData,
-      confirmationStatus: 'pending',
-      vendorStatus: 'unassigned',
-      customer: decodedCustName,
-      customerPhone: decodedCustPhone,
-      vendorName: decodedVendName,
-      vendorPhone: decodedVendPhone,
-      customerProfile: { ...richData.customerProfile, phone: decodedCustPhone, name: decodedCustName, email: decodedCustEmail },
-      vendor: { ...richData.vendor, phone: decodedVendPhone, name: decodedVendName, email: decodedVendEmail },
-      externalDeliveryStatus: existing?.externalDeliveryStatus || null,
-      externalDeliveryEvent: existing?.externalDeliveryEvent || null,
-      orderType: existing?.orderType || null,
-      branch: existing?.branch || null,
-      sender: existing?.sender || null,
-      receiver: existing?.receiver || null,
-      destinationBranch: existing?.destinationBranch || null,
-      externalNonHeavyLogisticsId: existing?.externalNonHeavyLogisticsId || null,
-      pickupTicketId: existing?.pickupTicketId || null,
+    if (richData) {
+      const decodedCustPhone = decodeBase64(richData.customerProfile?.phone);
+      const decodedVendPhone = decodeBase64(richData.vendor?.phone);
+      const decodedCustName = decodeBase64(richData.customerProfile?.name || richData.customer);
+      const decodedVendName = decodeBase64(richData.vendor?.name || richData.vendor);
+      const decodedCustEmail = decodeBase64(richData.customerProfile?.email);
+      const decodedVendEmail = decodeBase64(richData.vendor?.email);
+
+      const normalized = commerceSync.normalizeOrder(richData, existing);
+      await CommerceOrder.findOneAndUpdate(
+        { commerceOrderId },
+        {
+          $set: {
+            ...normalized,
+            rawApiData: richData,
+            lastSyncedAt: new Date(),
+          },
+        }
+      );
+
+      // Return DECODED response
+      const decodedResponse = {
+        ...richData,
+        notes: mergeNotes(existing?.notes, richData.notes),
+        confirmationStatus: existing?.customer?.confirmationStatus || 'pending',
+        vendorStatus: existing?.vendor?.vendorStatus || 'unassigned',
+        review: existing?.review || existing?.customer?.review,
+        customer: decodedCustName,
+        customerPhone: decodedCustPhone,
+        vendorName: decodedVendName,
+        vendorPhone: decodedVendPhone,
+        customerProfile: { ...richData.customerProfile, phone: decodedCustPhone, name: decodedCustName, email: decodedCustEmail },
+        vendor: { ...richData.vendor, phone: decodedVendPhone, name: decodedVendName, email: decodedVendEmail },
+        externalDeliveryStatus: existing?.commerce?.deliveryStatus || null,
+        externalDeliveryEvent: existing?.commerce?.deliveryEvent || null,
+        orderType: existing?.commerce?.orderType || null,
+        branch: existing?.commerce?.branch || existing?.branch || null,
+        sender: existing?.commerce?.sender || null,
+        receiver: existing?.commerce?.receiver || null,
+        destinationBranch: existing?.commerce?.destinationBranch || null,
+        externalNonHeavyLogisticsId: existing?.commerce?.externalNonHeavyLogisticsId || null,
+        pickupTicketId: existing?.commerce?.pickupTicketId || null,
+        activeTaskId: activeTask?._id || null,
+      };
+      return res.json({ success: true, data: decodedResponse, cached: false });
+    }
+
+    // External API unavailable — serve normalized local data instead of failing
+    const fallback = {
+      ...existing.toObject(),
+      notes: existing.notes || [],
+      confirmationStatus: existing.customer?.confirmationStatus || 'pending',
+      vendorStatus: existing.vendor?.vendorStatus || 'unassigned',
+      review: existing.customer?.review,
+      customer: typeof existing.customer === 'object' && existing.customer ? existing.customer.name : existing.customer,
+      customerPhone: existing.customer?.phone || existing.customerPhone,
+      vendorName: typeof existing.vendor === 'object' && existing.vendor ? existing.vendor.name : existing.vendor,
+      vendorPhone: existing.vendor?.phone || existing.vendorPhone,
+      items: existing.commerce?.items || [],
+      orderStatus: existing.commerce?.orderStatus,
+      paymentStatus: existing.commerce?.paymentStatus,
+      paymentMethod: existing.commerce?.paymentMethod,
+      totalAmount: existing.commerce?.totalAmount,
       activeTaskId: activeTask?._id || null,
+      cached: true,
     };
-    res.json({ success: true, data: decodedResponse, cached: false });
+    res.json({ success: true, data: fallback, cached: true });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -299,10 +440,10 @@ async function updateOrderPhone(req, res) {
       });
     }
 
-    const key = type === 'customer' ? 'customerPhone' : 'vendorPhone';
+    const path = type === 'customer' ? 'customer.phone' : 'vendor.phone';
     const updated = await CommerceOrder.findOneAndUpdate(
       { commerceOrderId },
-      { [key]: phone },
+      { $set: { [path]: phone } },
       { new: true }
     );
 
@@ -315,7 +456,7 @@ async function updateOrderPhone(req, res) {
 
     await Task.updateMany(
       { 'sourceOrder.orderId': commerceOrderId },
-      { [key === 'customerPhone' ? 'customerPhone' : 'vendorPhone']: phone }
+      { [type === 'customer' ? 'customerPhone' : 'vendorPhone']: phone }
     );
 
     res.json({ success: true, data: updated });
@@ -330,21 +471,29 @@ async function updateOrderPhone(req, res) {
 async function updateOrderStatus(req, res) {
   try {
     const { commerceOrderId } = req.params;
-    const { confirmationStatus, vendorStatus, orderStatus, note } = req.body;
+    const { confirmationStatus, vendorStatus, orderStatus, note, review } = req.body;
+
+    const existing = await CommerceOrder.findOne({ commerceOrderId });
+    if (!existing) {
+      return res.status(404).json({ success: false, error: { message: 'Order not found' } });
+    }
+    const prevStatus = existing.commerce?.orderStatus || existing.orderStatus;
 
     const update = {};
-    if (confirmationStatus) update.confirmationStatus = confirmationStatus;
-    if (vendorStatus) update.vendorStatus = vendorStatus;
-    if (orderStatus) update.orderStatus = orderStatus;
+    if (confirmationStatus) update['customer.confirmationStatus'] = confirmationStatus;
+    if (vendorStatus) update['vendor.vendorStatus'] = vendorStatus;
+    if (orderStatus) update['commerce.orderStatus'] = orderStatus;
+    if (review !== undefined) update['review'] = review;
 
     const historyEntry = {
       comment: note || `Status updated`,
-      actorName: req.user?.name || 'staff',
+      actorName: req.user?.name || req.user?.email || 'staff',
       changedAt: new Date().toISOString(),
     };
     if (confirmationStatus) historyEntry.confirmationStatus = confirmationStatus;
     if (vendorStatus) historyEntry.vendorStatus = vendorStatus;
     if (orderStatus) historyEntry.orderStatus = orderStatus;
+    if (review !== undefined) historyEntry.review = review;
 
     const updated = await CommerceOrder.findOneAndUpdate(
       { commerceOrderId },
@@ -360,6 +509,23 @@ async function updateOrderStatus(req, res) {
         success: false,
         error: { message: 'Order not found' },
       });
+    }
+
+    updated.workflowStage = commerceSync.computeWorkflowStage(updated);
+    updated.workflowPriority = commerceSync.computeWorkflowPriority(updated);
+    await updated.save();
+
+    if (orderStatus && orderStatus !== prevStatus) {
+      const isCancel = orderStatus === 'Cancelled';
+      const wasCancel = prevStatus === 'Cancelled';
+      if (isCancel || wasCancel) {
+        recoveryService.recordOrderRecovery({
+          order: updated,
+          isCancel,
+          fromStatus: prevStatus,
+          toStatus: orderStatus,
+        }).catch((err) => console.error('Recovery record failed', err));
+      }
     }
 
     res.json({ success: true, data: updated });
@@ -382,7 +548,8 @@ async function addOrderNote(req, res) {
     if (!order) {
       return res.status(404).json({ success: false, error: { message: 'Order not found' } });
     }
-    order.notes.push({ actor: req.user?.name || 'staff', note: note.trim() });
+    const role = req.user?.role || 'staff';
+    order.notes.push({ actor: role === 'admin' || role === 'super-admin' ? 'admin' : 'staff', actorName: req.user?.name || req.user?.email || 'staff', note: note.trim() });
     await order.save();
     res.json({ success: true, data: order.notes });
   } catch (error) {
@@ -417,6 +584,8 @@ module.exports = {
   syncAll,
   getSyncStatus,
   getOrders,
+  getSegmentCounts,
+  getReviews,
   getOrderById,
   getOrderStatus,
   getOrderDetail,

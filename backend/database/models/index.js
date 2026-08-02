@@ -265,6 +265,21 @@ const RecoveryCampaignSchema = new mongoose.Schema({
   orderNumber: {
     type: String,
   },
+  commerceOrderId: {
+    type: String,
+    unique: true,
+    sparse: true,
+  },
+  customerName: {
+    type: String,
+  },
+  customerPhone: {
+    type: String,
+  },
+  revenueAmount: {
+    type: Number,
+    default: 0,
+  },
   cancellationReason: {
     type: String,
     required: true,
@@ -314,6 +329,7 @@ RecoveryCampaignSchema.index({ outcome: 1 });
 RecoveryCampaignSchema.index({ cancellationReason: 1 });
 
 const CommerceOrderSchema = new mongoose.Schema({
+  // ── Identity (Primary Keys) ──
   commerceOrderId: {
     type: String,
     required: true,
@@ -323,157 +339,154 @@ const CommerceOrderSchema = new mongoose.Schema({
     type: String,
     unique: true,
   },
+
+  // ── Workflow (Computed, Indexed) ──
+  workflowStage: {
+    type: String,
+    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'delivered_followup', 'done', 'other'],
+    default: 'other',
+  },
+  workflowPriority: {
+    type: String,
+    enum: ['critical', 'high', 'medium', 'low'],
+    default: 'medium',
+  },
+  workflowUpdatedAt: { type: Date, default: Date.now },
+
+  // ── Contact Tracking ──
+  customerCalledAt: { type: Date },
+  customerCallCount: { type: Number, default: 0 },
+  vendorCalledAt: { type: Date },
+  vendorCallCount: { type: Number, default: 0 },
+  reviewCalledAt: { type: Date },
+  reviewCallCount: { type: Number, default: 0 },
+  review: String,
+
+  // ── Assignment (RBAC) ──
+  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+  assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+  assignedAt: { type: Date },
+  branch: { type: String },
+  team: { type: String },
+
+  // ── Customer ──
   customer: {
-    type: String,
+    name: String,
+    phone: String,
+    email: String,
+    profile: mongoose.Schema.Types.Mixed,
+    confirmationStatus: {
+      type: String,
+      enum: ['pending', 'confirmed', 'rejected', 'no_answer', 'rescheduled'],
+      default: 'pending',
+    },
+    calledAt: Date,
+    callCount: { type: Number, default: 0 },
   },
-  customerPhone: {
-    type: String,
-  },
+
+  // ── Vendor ──
   vendor: {
-    type: String,
-  },
-  vendorPhone: {
-    type: String,
-  },
-  confirmationStatus: {
-    type: String,
-    enum: ['pending', 'confirmed', 'rejected', 'no_answer', 'rescheduled'],
-    default: 'pending',
-  },
-  vendorStatus: {
-    type: String,
-    enum: ['unassigned', 'assigned', 'accepted', 'delayed', 'fulfilled'],
-    default: 'unassigned',
-  },
-  orderStatus: {
-    type: String,
-    default: 'Pending',
-    index: true,
-  },
-  paymentStatus: {
-    type: String,
-    default: 'Pending',
-    index: true,
-  },
-  paymentMethod: {
-    type: String,
-  },
-  logisticsOrderId: {
-    type: String,
-  },
-  externalLogisticsOrderId: {
-    type: String,
-  },
-  externalHeavyLogisticsId: {
-    type: String,
-  },
-  externalNonHeavyLogisticsId: {
-    type: String,
-  },
-  pickupTicketId: {
-    type: String,
-  },
-  externalDeliveryStatus: {
-    type: String,
-  },
-  externalDeliveryEvent: {
-    type: String,
-  },
-  orderType: {
-    type: String,
-  },
-  branch: {
-    type: mongoose.Schema.Types.Mixed,
-  },
-  sender: {
-    type: mongoose.Schema.Types.Mixed,
-  },
-  receiver: {
-    type: mongoose.Schema.Types.Mixed,
-  },
-  totalAmount: {
-    type: Number,
-    default: 0,
-  },
-  shippingAmount: {
-    type: Number,
-    default: 0,
-  },
-  unAttendedCount: {
-    type: Number,
-    default: 0,
-  },
-  additionalPickupTimeWindow: {
-    type: Number,
-  },
-  coupon: {
-    type: mongoose.Schema.Types.Mixed,
-  },
-  addedUser: {
-    type: mongoose.Schema.Types.Mixed,
-  },
-  items: [
-    {
-      product: { type: mongoose.Schema.Types.Mixed },
-      quantity: { type: Number },
-      price: { type: Number },
-      images: { type: mongoose.Schema.Types.Mixed, default: [] },
-      variant: { type: mongoose.Schema.Types.Mixed, default: {} },
+    name: String,
+    phone: String,
+    email: String,
+    info: mongoose.Schema.Types.Mixed,
+    vendorStatus: {
+      type: String,
+      enum: ['unassigned', 'assigned', 'accepted', 'delayed', 'fulfilled'],
+      default: 'unassigned',
     },
-  ],
-  vendorInfo: { type: mongoose.Schema.Types.Mixed },
-  customerProfile: { type: mongoose.Schema.Types.Mixed },
-  originBranch: { type: mongoose.Schema.Types.Mixed },
-  destinationBranch: { type: mongoose.Schema.Types.Mixed },
-  shippingType: { type: String },
-  dispatchMode: { type: String },
-  shippingAddress: { type: mongoose.Schema.Types.Mixed },
-  deliveryChargeBreakdown: { type: mongoose.Schema.Types.Mixed },
-  cancelledBy: { type: String },
-  cancelledReason: { type: String },
-  statusHistory: [{ type: mongoose.Schema.Types.Mixed }],
-  rawApiData: { type: mongoose.Schema.Types.Mixed },
-  lastSyncedAt: {
-    type: Date,
-    default: Date.now,
+    calledAt: Date,
+    callCount: { type: Number, default: 0 },
   },
-  lastSyncChanges: {
-    type: String,
+
+  // ── Commerce Data (Denormalized from API) ──
+  commerce: {
+    orderStatus: { type: String, index: true, default: 'Pending' },
+    paymentStatus: { type: String, index: true, default: 'Pending' },
+    paymentMethod: String,
+    deliveryStatus: String,
+    deliveryEvent: String,
+    orderType: String,
+    branch: String,
+    sender: mongoose.Schema.Types.Mixed,
+    receiver: mongoose.Schema.Types.Mixed,
+    destinationBranch: mongoose.Schema.Types.Mixed,
+    totalAmount: { type: Number, default: 0 },
+    shippingAmount: { type: Number, default: 0 },
+    unAttendedCount: { type: Number, default: 0 },
+    additionalPickupTimeWindow: Number,
+    coupon: mongoose.Schema.Types.Mixed,
+    addedUser: mongoose.Schema.Types.Mixed,
+    items: [
+      {
+        product: { type: mongoose.Schema.Types.Mixed },
+        quantity: { type: Number },
+        price: { type: Number },
+        images: { type: mongoose.Schema.Types.Mixed, default: [] },
+        variant: { type: mongoose.Schema.Types.Mixed, default: {} },
+      },
+    ],
+    logisticsOrderId: String,
+    externalLogisticsOrderId: String,
+    externalHeavyLogisticsId: String,
+    externalNonHeavyLogisticsId: String,
+    pickupTicketId: String,
+    originBranch: mongoose.Schema.Types.Mixed,
+    destinationBranch: mongoose.Schema.Types.Mixed,
+    shippingType: String,
+    dispatchMode: String,
+    shippingAddress: mongoose.Schema.Types.Mixed,
+    deliveryChargeBreakdown: mongoose.Schema.Types.Mixed,
+    cancelledBy: String,
+    cancelledReason: String,
   },
-  externalUpdatedAt: {
-    type: Date,
-  },
-  notes: [
-    {
-      actor: { type: String },
-      note: { type: String },
-      createdAt: { type: Date, default: Date.now },
-    },
-  ],
-  scheduledAt: {
-    type: Date,
-  },
-  synced: {
-    type: Boolean,
-    default: true,
-  },
-  source: {
-    type: String,
-    enum: ['commerce-api'],
-    default: 'commerce-api',
-  },
+
+  // ── System ──
+  rawApiData: { type: mongoose.Schema.Types.Mixed, select: false },
+  lastSyncedAt: { type: Date, index: true, default: Date.now },
+  externalUpdatedAt: { type: Date },
+  synced: { type: Boolean, default: true },
+  source: { type: String, default: 'commerce-api' },
+  scheduledAt: Date,
+
+  // ── Enhanced Audit Trail ──
+  statusHistory: [{
+    field: String,
+    from: mongoose.Schema.Types.Mixed,
+    to: mongoose.Schema.Types.Mixed,
+    actor: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+    actorName: String,
+    changedAt: { type: Date, default: Date.now },
+    source: String,
+    comment: String,
+    metadata: mongoose.Schema.Types.Mixed,
+  }],
+
+  notes: [{
+    actor: { type: String, enum: ['system', 'customer', 'vendor', 'admin', 'staff'] },
+    actorName: String,
+    note: String,
+    createdAt: { type: Date, default: Date.now },
+  }],
 }, {
   timestamps: true,
   collection: 'commerce_orders',
 });
 
-CommerceOrderSchema.index({ commerceOrderId: 1 });
-CommerceOrderSchema.index({ orderStatus: 1, paymentStatus: 1 });
-CommerceOrderSchema.index({ createdAt: -1 });
-CommerceOrderSchema.index({ customer: 1 });
-CommerceOrderSchema.index({ vendor: 1 });
+// ── Indexes ──
+CommerceOrderSchema.index({ workflowStage: 1, workflowPriority: -1, createdAt: -1 });
+CommerceOrderSchema.index({ branch: 1, workflowStage: 1, workflowPriority: -1, createdAt: -1 });
+CommerceOrderSchema.index({ assignedTo: 1, workflowStage: 1, workflowPriority: -1 });
+CommerceOrderSchema.index({ team: 1, workflowStage: 1 });
+CommerceOrderSchema.index({ workflowStage: 1, workflowUpdatedAt: 1 });
+CommerceOrderSchema.index({ 'commerce.orderStatus': 1, 'customer.confirmationStatus': 1, 'vendor.vendorStatus': 1 });
+CommerceOrderSchema.index({ 'customer.name': 1, 'customer.phone': 1 });
 
 const AdminSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    trim: true,
+  },
   email: {
     type: String,
     required: true,
@@ -490,6 +503,8 @@ const AdminSchema = new mongoose.Schema({
     enum: ['super-admin', 'admin', 'manager', 'staff'],
     default: 'staff',
   },
+  branches: [{ type: String }],
+  team: { type: String },
   isActive: {
     type: Boolean,
     default: true,
@@ -499,8 +514,6 @@ const AdminSchema = new mongoose.Schema({
   timestamps: true,
   collection: 'admins',
 });
-
-AdminSchema.index({ email: 1 }, { unique: true });
 
 const defaultSettings = {
   logisticsFollowupHours: { value: 6, description: 'Hours after which a Processing order with no logistics pickup gets a followup task' },

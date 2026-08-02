@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { commerceApi, taskApi } from '../services/api';
 import { useSimulatedTime } from '../hooks/useSimulatedTime';
+import { entityName } from '../utils/order';
 import {
   ShoppingBag, PlusCircle, Clock, Database, CheckCircle2,
   AlertTriangle, Search, PhoneCall, Store, Zap, XCircle,
@@ -22,18 +23,29 @@ const PAGE_SIZE = 10;
 
 export default function Orders() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { simulatedTimeIso, advanceTime } = useSimulatedTime();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '');
   const [activeSegment, setActiveSegment] = useState<string>('pending_confirmation');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [segmentCounts, setSegmentCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    setSearchQuery(searchParams.get('search') || '');
+  }, [searchParams]);
 
   const fetchOrders = async (p: number) => {
     try {
       setLoading(true);
-      const data: any = await commerceApi.getOrders({ limit: PAGE_SIZE, page: p });
+      const data: any = await commerceApi.getOrders({ 
+        limit: PAGE_SIZE, 
+        page: p,
+        segment: activeSegment,
+        search: searchQuery || undefined
+      });
       setOrders(data.data?.orders || []);
       setTotal(data.data?.total || 0);
     } catch (err) {
@@ -45,35 +57,13 @@ export default function Orders() {
 
   useEffect(() => {
     fetchOrders(page);
-  }, [page]);
+  }, [page, activeSegment, searchQuery]);
 
-  const segmentOrderIds = new Map<string, number>();
-
-  const inSegment = (order: any, segment: string) => {
-    const cs = order.confirmationStatus || 'pending';
-    const vs = order.vendorStatus || 'unassigned';
-    const os = (order.orderStatus || '').toLowerCase();
-    switch (segment) {
-      case 'pending_confirmation': return cs === 'pending' && os === 'pending';
-      case 'pending_review': return cs === 'confirmed' && vs === 'accepted' && (os === 'pending' || os === 'processing');
-      case 'confirmed_unprocessed': return cs === 'confirmed' && (os === 'pending' || os === '');
-      case 'delivered_followup': return os === 'delivered';
-      case 'done': return cs === 'confirmed';
-      default: return false;
-    }
-  };
-
-  const filteredOrders = orders.filter((order) => {
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        (order.orderNumber || order.commerceOrderId || '').toLowerCase().includes(q) ||
-        (order.customer || '').toLowerCase().includes(q) ||
-        (order.customerPhone || '').includes(q)
-      );
-    }
-    return inSegment(order, activeSegment);
-  });
+  useEffect(() => {
+    commerceApi.getSegmentCounts().then(res => {
+      if (res?.data) setSegmentCounts(res.data);
+    }).catch(console.error);
+  }, [activeSegment]);
 
   const handleSkip = async (e: React.MouseEvent, order: any) => {
     e.stopPropagation();
@@ -94,9 +84,9 @@ export default function Orders() {
     } catch { toast.error('Failed to mark as done'); }
   };
 
-  const segmentCounts = SEGMENTS.map((seg) => ({
+  const getSegmentCounts = () => SEGMENTS.map((seg) => ({
     ...seg,
-    count: orders.filter((o) => inSegment(o, seg.key)).length,
+    count: segmentCounts[seg.key] || 0,
   }));
 
   return (
@@ -128,7 +118,7 @@ export default function Orders() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {segmentCounts.map((seg) => {
+        {getSegmentCounts().map((seg) => {
           const Icon = seg.icon;
           const isActive = activeSegment === seg.key;
           return (
@@ -151,7 +141,7 @@ export default function Orders() {
       <div className="bg-white rounded-2xl border-2 border-slate-200 shadow-sm p-4 space-y-4">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
           <div className="text-sm font-bold text-slate-800">
-            {segmentCounts.find((s) => s.key === activeSegment)?.label || ''}
+            {getSegmentCounts().find((s) => s.key === activeSegment)?.label || ''}
             <span className="ml-2 text-slate-400 font-mono text-xs">
               Page {page} of {Math.ceil(total / PAGE_SIZE) || 1} ({total} total)
             </span>
@@ -167,13 +157,17 @@ export default function Orders() {
         <div className="space-y-3 pt-2">
           {loading ? (
             <div className="p-12 text-center text-slate-400 font-bold">Loading orders...</div>
-          ) : filteredOrders.length === 0 ? (
+          ) : orders.length === 0 ? (
             <div className="p-12 text-center text-slate-500 space-y-2 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
               <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
               <p className="font-bold text-slate-800">No orders in this segment</p>
             </div>
           ) : (
-            filteredOrders.map((order) => (
+            orders.map((order) => {
+              const os = order.commerce?.orderStatus || order.orderStatus || '';
+              const customer = entityName(order.customer);
+              const customerPhone = order.customer?.phone || order.customerPhone;
+              return (
               <div key={order._id || order.commerceOrderId}
                 onClick={() => navigate(`/orders/${order.commerceOrderId}`)}
                 className="rounded-2xl border-2 border-slate-200 bg-white p-4 transition-all hover:border-red-300 hover:shadow-md space-y-3 cursor-pointer">
@@ -184,26 +178,26 @@ export default function Orders() {
                         #{order.orderNumber || order.commerceOrderId}
                       </span>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        order.orderStatus === 'Cancelled' ? 'bg-red-100 text-red-700' :
-                        order.orderStatus === 'Delivered' ? 'bg-emerald-100 text-emerald-700' :
-                        order.orderStatus === 'Processing' ? 'bg-blue-100 text-blue-700' :
+                        os === 'Cancelled' ? 'bg-red-100 text-red-700' :
+                        os === 'Delivered' ? 'bg-emerald-100 text-emerald-700' :
+                        os === 'Processing' ? 'bg-blue-100 text-blue-700' :
                         'bg-amber-100 text-amber-700'
-                      }`}>{order.orderStatus}</span>
+                      }`}>{os}</span>
                     </div>
                     <div>
-                      <p className="font-extrabold text-slate-900 text-sm">{order.customer || '-'}</p>
-                      {order.customerPhone && (
-                        <p className="text-xs text-slate-500 font-mono">{order.customerPhone}</p>
+                      <p className="font-extrabold text-slate-900 text-sm">{customer || '-'}</p>
+                      {customerPhone && (
+                        <p className="text-xs text-slate-500 font-mono">{customerPhone}</p>
                       )}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm font-black font-mono text-slate-900">Rs {order.totalAmount || 0}</div>
+                    <div className="text-sm font-black font-mono text-slate-900">Rs {order.totalAmount || order.commerce?.totalAmount || 0}</div>
                     <div className="flex gap-1 mt-1 justify-end">
-                      {order.confirmationStatus === 'confirmed' && (
+                      {(order.customer?.confirmationStatus || order.confirmationStatus) === 'confirmed' && (
                         <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">Confirmed</span>
                       )}
-                      {order.orderStatus === 'Delivered' && (
+                      {os === 'Delivered' && (
                         <span className="text-[10px] font-black px-2 py-0.5 rounded bg-blue-100 text-blue-800">Delivered</span>
                       )}
                     </div>
@@ -222,7 +216,8 @@ export default function Orders() {
                   </div>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
           {!loading && total > PAGE_SIZE && (() => {
             const totalPages = Math.ceil(total / PAGE_SIZE);

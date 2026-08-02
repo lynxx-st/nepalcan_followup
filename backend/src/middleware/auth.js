@@ -41,6 +41,16 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+const requireSuperAdmin = (req, res, next) => {
+  if (req.userRole !== 'super-admin') {
+    return res.status(403).json({
+      success: false,
+      error: { message: 'Super admin access required' },
+    });
+  }
+  next();
+};
+
 const optionalAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -59,4 +69,4 @@ const optionalAuth = async (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, requireAdmin, optionalAuth };
+module.exports = { authenticate, requireAdmin, requireSuperAdmin, optionalAuth };
