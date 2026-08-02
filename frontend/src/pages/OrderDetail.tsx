@@ -6,6 +6,7 @@ import { entityName } from '../utils/order';
 import {
   PhoneCall, CheckCircle2, XCircle, Clock, Calendar, AlertTriangle,
   PhoneOff, User, Store, PackageCheck, ThumbsUp, ArrowLeft,
+  X,
 } from 'lucide-react';
 
 const callPhone = (phone: string) => { window.location.href = `tel:${phone}`; };
@@ -13,7 +14,7 @@ const callPhone = (phone: string) => { window.location.href = `tel:${phone}`; };
 const customerOutcomes = [
   { label: '✓ Confirmed', color: 'bg-emerald-600 hover:bg-emerald-500 text-white', value: 'confirmed', icon: CheckCircle2 },
   { label: '❌ Cancel', color: 'bg-rose-600 hover:bg-rose-500 text-white', value: 'rejected', icon: XCircle },
-  { label: '📅 Tomorrow', color: 'bg-indigo-600 hover:bg-indigo-500 text-white', value: 'rescheduled', icon: Calendar },
+  { label: '📅 Schedule call...', color: 'bg-indigo-600 hover:bg-indigo-500 text-white', value: 'schedule_call', icon: Calendar },
   { label: '📵 No Answer', color: 'bg-slate-600 hover:bg-slate-500 text-white', value: 'no_answer', icon: PhoneOff },
   { label: '📞 Call Later', color: 'bg-amber-600 hover:bg-amber-500 text-white', value: 'call_later', icon: Clock },
 ];
@@ -21,6 +22,7 @@ const customerOutcomes = [
 const vendorOutcomes = [
   { label: '✓ Accepted', color: 'bg-emerald-600 hover:bg-emerald-500 text-white', value: 'accepted', icon: CheckCircle2 },
   { label: '⏳ Delayed', color: 'bg-amber-600 hover:bg-amber-500 text-white', value: 'delayed', icon: Clock },
+  { label: '📅 Schedule dispatch...', color: 'bg-indigo-600 hover:bg-indigo-500 text-white', value: 'schedule_dispatch', icon: Calendar },
   { label: '📵 No Answer', color: 'bg-slate-600 hover:bg-slate-500 text-white', value: 'no_answer', icon: PhoneOff },
   { label: '📞 Call Later', color: 'bg-amber-600 hover:bg-amber-500 text-white', value: 'call_later', icon: PhoneCall },
 ];
@@ -39,6 +41,19 @@ export default function OrderDetail() {
   const [noteSaving, setNoteSaving] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [reviewText, setReviewText] = useState('');
+
+  const [showCustomerDatePicker, setShowCustomerDatePicker] = useState(false);
+  const [customerScheduleDate, setCustomerScheduleDate] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  });
+  const [showVendorDatePicker, setShowVendorDatePicker] = useState(false);
+  const [vendorScheduleDate, setVendorScheduleDate] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  });
 
   useEffect(() => {
     const fetch = async () => {
@@ -80,6 +95,8 @@ export default function OrderDetail() {
       setCustomerStatus('rejected');
       await updateStatus({ confirmationStatus: 'rejected', orderStatus: 'Cancelled', note: 'Customer cancelled order' });
       toast.warning('Order marked as cancelled');
+    } else if (value === 'schedule_call') {
+      setShowCustomerDatePicker(true);
     } else if (value === 'rescheduled') {
       setCustomerStatus('rescheduled');
       await updateStatus({ confirmationStatus: 'rescheduled', note: 'Customer requested tomorrow' });
@@ -94,6 +111,30 @@ export default function OrderDetail() {
       setCustomerStatus(value);
       toast(`Customer: ${value}`);
     }
+  };
+
+  const handleCustomerScheduleConfirm = async () => {
+    if (!customerScheduleDate) return;
+    if (!order.activeTaskId) {
+      toast('No active task to schedule');
+      setShowCustomerDatePicker(false);
+      return;
+    }
+    try {
+      await taskApi.schedule(order.activeTaskId, customerScheduleDate);
+      setCustomerStatus('rescheduled');
+      await updateStatus({ confirmationStatus: 'rescheduled', note: `Customer requested callback on ${new Date(customerScheduleDate).toLocaleDateString()}` });
+      toast.success(`Call scheduled for ${new Date(customerScheduleDate).toLocaleDateString()}`);
+    } catch (err) {
+      console.error('Failed to schedule task', err);
+      toast.error('Failed to schedule call');
+    } finally {
+      setShowCustomerDatePicker(false);
+    }
+  };
+
+  const handleCustomerScheduleCancel = () => {
+    setShowCustomerDatePicker(false);
   };
 
   const handleSaveReview = async () => {
@@ -123,10 +164,37 @@ export default function OrderDetail() {
       setVendorStatus('delayed');
       await updateStatus({ vendorStatus: 'delayed', note: 'Vendor reported delay' });
       toast.warning('Vendor delayed');
+    } else if (value === 'schedule_dispatch') {
+      setShowVendorDatePicker(true);
     } else {
       setVendorStatus(value);
       toast(`Vendor: ${value}`);
     }
+  };
+
+  const handleVendorScheduleConfirm = async () => {
+    if (!vendorScheduleDate) return;
+    try {
+      const res = await taskApi.getByOrder(order.commerceOrderId, 'pending');
+      const tasks = res.data;
+      const vendorTask = tasks.find((t: any) => t.type === 'vendor-call' || t.type === 'vendor-delay');
+      if (!vendorTask) {
+        toast('No vendor task found — assign vendor first');
+        setShowVendorDatePicker(false);
+        return;
+      }
+      await taskApi.schedule(vendorTask._id, vendorScheduleDate);
+      toast.success(`Dispatch scheduled for ${new Date(vendorScheduleDate).toLocaleDateString()}`);
+    } catch (err) {
+      console.error('Failed to schedule vendor task', err);
+      toast.error('Failed to schedule dispatch');
+    } finally {
+      setShowVendorDatePicker(false);
+    }
+  };
+
+  const handleVendorScheduleCancel = () => {
+    setShowVendorDatePicker(false);
   };
 
   const handleMarkDone = async () => {
@@ -288,6 +356,25 @@ export default function OrderDetail() {
             </button>
           )}
 
+          {showCustomerDatePicker && (
+            <div className="space-y-2 p-3 bg-indigo-50 rounded-xl border border-indigo-200">
+              <p className="text-xs font-bold text-indigo-700 mb-2">Schedule callback date:</p>
+              <input type="date" value={customerScheduleDate} onChange={(e) => setCustomerScheduleDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <div className="flex gap-2">
+                <button onClick={handleCustomerScheduleConfirm}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2.5 rounded-lg cursor-pointer">
+                  Schedule
+                </button>
+                <button onClick={handleCustomerScheduleCancel}
+                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-lg cursor-pointer">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           {customerCalling && (
             <div className="space-y-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
               <p className="text-xs font-bold text-slate-500 mb-2">Select outcome:</p>
@@ -358,6 +445,25 @@ export default function OrderDetail() {
               className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-sm px-4 py-3 rounded-xl shadow-md transition-all cursor-pointer">
               <PhoneCall className="w-5 h-5" /> Call Vendor
             </button>
+          )}
+
+          {showVendorDatePicker && (
+            <div className="space-y-2 p-3 bg-indigo-50 rounded-xl border border-indigo-200">
+              <p className="text-xs font-bold text-indigo-700 mb-2">Schedule dispatch date:</p>
+              <input type="date" value={vendorScheduleDate} onChange={(e) => setVendorScheduleDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <div className="flex gap-2">
+                <button onClick={handleVendorScheduleConfirm}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2.5 rounded-lg cursor-pointer">
+                  Schedule
+                </button>
+                <button onClick={handleVendorScheduleCancel}
+                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-lg cursor-pointer">
+                  Cancel
+                </button>
+              </div>
+            </div>
           )}
 
           {vendorCalling && (

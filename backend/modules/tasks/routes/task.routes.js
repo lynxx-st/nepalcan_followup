@@ -7,6 +7,7 @@ const { validate } = require('../../../src/middleware/validate');
 router.post('/', authenticate, validate(require('../validation/task.schema').createTaskSchema), taskController.createTask);
 router.get('/next', authenticate, taskController.getNextTask);
 router.get('/today-summary', authenticate, taskController.listTasks);
+router.get('/by-order/:orderId', authenticate, taskController.getTasksByOrder);
 router.get('/:id', authenticate, taskController.getTaskById);
 router.post('/:id/notes', authenticate, taskController.addNote);
 router.get('/', authenticate, taskController.listTasks);

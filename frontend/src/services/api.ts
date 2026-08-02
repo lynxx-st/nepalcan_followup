@@ -79,6 +79,10 @@ export const taskApi = {
   update: (id: string, data: any) => api.put(`/v1/tasks/${id}`, data),
   delete: (id: string) => api.delete(`/v1/tasks/${id}`),
   schedule: (id: string, scheduledDate: string) => api.put(`/v1/tasks/${id}/schedule`, { scheduledDate }),
+  getByOrder: (orderId: string, status?: string) => {
+    const params = status ? `?status=${status}` : '';
+    return api.get(`/v1/tasks/by-order/${orderId}${params}`);
+  },
 };
 
 export const ruleApi = {

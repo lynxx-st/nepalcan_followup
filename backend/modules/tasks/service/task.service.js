@@ -58,6 +58,12 @@ class TaskService {
     return { tasks, total, page, limit };
   }
 
+  async getTasksByOrder(orderId, statusFilter) {
+    const query = { 'sourceOrder.orderId': orderId };
+    if (statusFilter) query.status = statusFilter;
+    return Task.find(query).populate('assigneeId', 'name email').sort({ createdAt: -1 });
+  }
+
   async assignTask(id, data) {
     const task = await Task.findById(id);
     if (!task) throw new NotFoundError('Task not found');

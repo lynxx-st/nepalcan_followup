@@ -149,6 +149,17 @@ async function scheduleTask(req, res, next) {
   }
 }
 
+async function getTasksByOrder(req, res, next) {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.query;
+    const tasks = await taskService.getTasksByOrder(orderId, status);
+    res.json({ success: true, data: tasks });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   createTask,
   getTaskById,
@@ -161,4 +172,5 @@ module.exports = {
   deleteTask,
   getNextTask,
   scheduleTask,
+  getTasksByOrder,
 };
