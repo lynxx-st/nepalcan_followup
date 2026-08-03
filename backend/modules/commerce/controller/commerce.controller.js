@@ -212,6 +212,7 @@ async function getSegmentCounts(req, res) {
       confirmed_unprocessed: 0,
       delivered_followup: 0,
       done: 0,
+      rescheduled: 0,
       other: 0
     };
     
@@ -562,8 +563,9 @@ async function syncAll(req, res) {
     if (commerceSync.getSyncStatus().running) {
       return res.json({ success: true, data: { message: 'Sync already running', running: true } });
     }
-    commerceSync.runSyncAll();
-    res.json({ success: true, data: { message: 'Sync started', running: true } });
+    const result = await commerceSync.runSyncAll();
+    const totalSynced = result.ordersSynced + result.logisticsSynced;
+    res.json({ success: true, data: { message: `Synced ${totalSynced} items`, ...result } });
   } catch (error) {
     res.status(500).json({ success: false, error: { message: error.message } });
   }

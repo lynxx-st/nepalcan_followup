@@ -57,9 +57,15 @@ class CommerceSyncService {
       this.syncStatus.tasksCreated = logisticsResult.tasksCreated;
 
       this.syncStatus.lastCompletedAt = new Date().toISOString();
+      return {
+        ordersSynced: orderResult.totalFetched,
+        logisticsSynced: logisticsResult.totalUpdated,
+        tasksCreated: logisticsResult.tasksCreated,
+      };
     } catch (err) {
       this.syncStatus.lastError = err.message;
       logger.error('Sync all failed', { error: err.message });
+      return { ordersSynced: 0, logisticsSynced: 0, tasksCreated: 0, error: err.message };
     } finally {
       this.syncStatus.running = false;
     }
@@ -495,11 +501,11 @@ class CommerceSyncService {
     const vs = order.vendor?.vendorStatus || 'unassigned';
     const os = (order.commerce?.orderStatus || '').toLowerCase();
 
-    if (cs === 'pending' && os === 'pending') return 'pending_confirmation';
-    if (cs === 'confirmed' && vs === 'accepted' && ['pending', 'processing'].includes(os)) return 'pending_review';
+    if (cs === 'rescheduled' || vs === 'rescheduled') return 'rescheduled';
+    if (['delivered', 'shipped', 'return delivered'].includes(os)) return 'delivered_followup';
+    if (cs === 'confirmed' && vs === 'accepted') return 'done';
     if (cs === 'confirmed' && ['pending', ''].includes(os)) return 'confirmed_unprocessed';
-    if (os === 'delivered') return 'delivered_followup';
-    if (cs === 'confirmed') return 'done';
+    if (cs === 'pending' && os === 'pending') return 'pending_confirmation';
     return 'other';
   }
 
