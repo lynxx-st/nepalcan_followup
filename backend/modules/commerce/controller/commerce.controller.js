@@ -213,6 +213,7 @@ async function getSegmentCounts(req, res) {
       delivered_followup: 0,
       done: 0,
       rescheduled: 0,
+      shipped: 0,
       other: 0
     };
     

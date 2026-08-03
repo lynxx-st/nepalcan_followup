@@ -7,7 +7,7 @@ import { entityName } from '../utils/order';
 import {
   ShoppingBag, PlusCircle, Clock, Database, CheckCircle2,
   AlertTriangle, Search, PhoneCall, Store, Zap, XCircle,
-  ThumbsUp, PackageCheck,
+  ThumbsUp, PackageCheck, CalendarClock, Truck,
 } from 'lucide-react';
 
 
@@ -15,7 +15,9 @@ const SEGMENTS = [
   { key: 'pending_confirmation', label: 'Pending Order Confirmation', icon: PhoneCall },
   { key: 'pending_review', label: 'Pending Review Calls', icon: ThumbsUp },
   { key: 'confirmed_unprocessed', label: 'Confirmed But Not Processed', icon: PackageCheck },
+  { key: 'rescheduled', label: 'Rescheduled Orders', icon: CalendarClock },
   { key: 'delivered_followup', label: 'Follow-up of Delivered Calls', icon: Store },
+  { key: 'shipped', label: 'Shipped Orders', icon: Truck },
   { key: 'done', label: 'Marked Done', icon: CheckCircle2 },
 ] as const;
 

@@ -391,6 +391,7 @@ class CommerceSyncService {
     const phoneOf = (e) => (e && typeof e === 'object' ? (e.phone || '') : (e || ''));
 
     const priorityMap = this.getPriorityForOrder(order);
+    if (!priorityMap) return;
 
     const orderData = {
       _id: order.commerceOrderId,
@@ -431,6 +432,7 @@ class CommerceSyncService {
     const paymentMethod = c.paymentMethod || order.paymentMethod;
     const unAttendedCount = c.unAttendedCount ?? order.unAttendedCount;
     const totalAmount = c.totalAmount ?? order.totalAmount;
+    if (orderStatus === 'Shipped') return null;
     let priority = 'medium';
     let taskType = 'customer-confirmation';
     let slaMinutes = this.slaDefaults['customer-confirmation'];
@@ -468,7 +470,6 @@ class CommerceSyncService {
         break;
 
       case 'Delivered':
-      case 'Shipped':
       case 'Return Delivered':
         priority = 'low';
         taskType = 'review-call';
@@ -502,7 +503,8 @@ class CommerceSyncService {
     const os = (order.commerce?.orderStatus || '').toLowerCase();
 
     if (cs === 'rescheduled' || vs === 'rescheduled') return 'rescheduled';
-    if (['delivered', 'shipped', 'return delivered'].includes(os)) return 'delivered_followup';
+    if (os === 'shipped') return 'shipped';
+    if (['delivered', 'return delivered'].includes(os)) return 'delivered_followup';
     if (cs === 'confirmed' && vs === 'accepted') return 'done';
     if (cs === 'confirmed' && ['pending', ''].includes(os)) return 'confirmed_unprocessed';
     if (cs === 'pending' && os === 'pending') return 'pending_confirmation';
@@ -510,7 +512,8 @@ class CommerceSyncService {
   }
 
   computeWorkflowPriority(order) {
-    return this.getPriorityForOrder(order).priority;
+    const p = this.getPriorityForOrder(order);
+    return p ? p.priority : 'low';
   }
 
   async getOrderStatus(commerceOrderId) {
