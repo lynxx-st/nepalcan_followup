@@ -560,12 +560,22 @@ async function addOrderNote(req, res) {
 
 async function syncAll(req, res) {
   try {
-    if (commerceSync.getSyncStatus().running) {
+    const status = commerceSync.getSyncStatus();
+    if (status.running) {
       return res.json({ success: true, data: { message: 'Sync already running', running: true } });
     }
-    const result = await commerceSync.runSyncAll();
-    const totalSynced = result.ordersSynced + result.logisticsSynced;
-    res.json({ success: true, data: { message: `Synced ${totalSynced} items`, ...result } });
+    commerceSync.runSyncAll();
+    const lastSynced = status.totalOrdersSynced + status.totalLogisticsSynced;
+    res.json({
+      success: true,
+      data: {
+        message: `Synced ${lastSynced} items`,
+        ordersSynced: status.totalOrdersSynced,
+        logisticsSynced: status.totalLogisticsSynced,
+        tasksCreated: status.tasksCreated,
+        running: true,
+      },
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: { message: error.message } });
   }
