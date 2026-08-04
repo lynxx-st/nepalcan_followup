@@ -73,6 +73,20 @@ export default function OrderDetail() {
     if (commerceOrderId) fetch();
   }, [commerceOrderId]);
 
+  useEffect(() => {
+    if (!commerceOrderId) return;
+    const onUpdate = () => {
+      commerceApi.getDetail(commerceOrderId).then((detailRes: any) => {
+        const o = detailRes.data;
+        setOrder(o);
+        setCustomerStatus(o.confirmationStatus || 'pending');
+        setVendorStatus(o.vendorStatus || 'unassigned');
+      }).catch(console.error);
+    };
+    window.addEventListener('orders-updated', onUpdate);
+    return () => window.removeEventListener('orders-updated', onUpdate);
+  }, [commerceOrderId]);
+
   const updateStatus = async (data: Record<string, any>) => {
     setSaving(true);
     try {
@@ -184,6 +198,8 @@ export default function OrderDetail() {
         return;
       }
       await taskApi.schedule(vendorTask._id, vendorScheduleDate);
+      setVendorStatus('rescheduled');
+      await updateStatus({ vendorStatus: 'rescheduled', note: `Vendor scheduled dispatch on ${new Date(vendorScheduleDate).toLocaleDateString()}` });
       toast.success(`Dispatch scheduled for ${new Date(vendorScheduleDate).toLocaleDateString()}`);
     } catch (err) {
       console.error('Failed to schedule vendor task', err);
@@ -291,6 +307,26 @@ export default function OrderDetail() {
         </div>
       )}
 
+      {cs === 'rescheduled' && (
+        <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl px-5 py-4 flex items-start gap-3 shadow-sm">
+          <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-extrabold text-amber-900">Please alert vendor</p>
+            <p className="text-xs text-amber-700 mt-0.5">Customer rescheduled this order — call the vendor and update them on the new schedule.</p>
+          </div>
+        </div>
+      )}
+
+      {vs === 'rescheduled' && (
+        <div className="bg-indigo-50 border-2 border-indigo-400 rounded-2xl px-5 py-4 flex items-start gap-3 shadow-sm">
+          <AlertTriangle className="w-6 h-6 text-indigo-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-extrabold text-indigo-900">Please alert customer</p>
+            <p className="text-xs text-indigo-700 mt-0.5">Vendor rescheduled dispatch — call the customer and update them on the new schedule.</p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="bg-white rounded-2xl border-2 border-slate-200 shadow-sm p-5 space-y-4">
           <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
@@ -353,6 +389,12 @@ export default function OrderDetail() {
             <button onClick={() => { callPhone(customer.phone || order.customerPhone); setCustomerCalling(true); }}
               className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-extrabold text-sm px-4 py-3 rounded-xl shadow-md transition-all cursor-pointer">
               <PhoneCall className="w-5 h-5" /> Call Customer
+            </button>
+          )}
+          {vs === 'rescheduled' && !customerCalling && (
+            <button onClick={() => { callPhone(customer.phone || order.customerPhone); setCustomerCalling(true); }}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm px-4 py-3 rounded-xl shadow-md transition-all cursor-pointer">
+              <PhoneCall className="w-5 h-5" /> Call Customer &amp; Update Schedule
             </button>
           )}
 
@@ -444,6 +486,12 @@ export default function OrderDetail() {
             <button onClick={() => { callPhone(vendor.phone || order.vendorPhone); setVendorCalling(true); }}
               className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-sm px-4 py-3 rounded-xl shadow-md transition-all cursor-pointer">
               <PhoneCall className="w-5 h-5" /> Call Vendor
+            </button>
+          )}
+          {cs === 'rescheduled' && !vendorCalling && (
+            <button onClick={() => { callPhone(vendor.phone || order.vendorPhone); setVendorCalling(true); }}
+              className="w-full flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-sm px-4 py-3 rounded-xl shadow-md transition-all cursor-pointer">
+              <PhoneCall className="w-5 h-5" /> Call Vendor &amp; Update Schedule
             </button>
           )}
 

@@ -125,7 +125,12 @@ async function getDashboardOrders(req, res, next) {
   try {
     const orders = await CommerceOrder.aggregate([
       {
-        $match: { orderStatus: { $nin: ['Processing'] } },
+        $match: {
+          orderStatus: { $nin: ['Processing'] },
+          $nor: [
+            { 'customer.confirmationStatus': 'confirmed', 'vendor.vendorStatus': 'accepted' },
+          ],
+        },
       },
       {
         $lookup: {
@@ -200,10 +205,17 @@ $project: {
       },
     ]);
 
-    const counts = { 'customer-confirmation': 0, 'vendor-call': 0, 'cancelled-recovery': 0, 'review-call': 0, escalation: 0, 'vendor-delay': 0 };
+    const counts = { 'customer-confirmation': 0, 'vendor-call': 0, 'cancelled-recovery': 0, 'review-call': 0, escalation: 0, 'vendor-delay': 0, rescheduled: 0 };
     for (const o of orders) {
       if (counts[o.taskType] !== undefined) counts[o.taskType]++;
     }
+    const rescheduledCount = await CommerceOrder.countDocuments({
+      $or: [
+        { 'customer.confirmationStatus': 'rescheduled' },
+        { 'vendor.vendorStatus': 'rescheduled' },
+      ],
+    });
+    counts.rescheduled = rescheduledCount;
 
     res.json({ success: true, data: { counts, orders } });
   } catch (error) {

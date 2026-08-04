@@ -47,7 +47,7 @@ function cachedGet<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
   });
 }
 
-function invalidateCache(pattern?: string) {
+export function invalidateCache(pattern?: string) {
   if (pattern) {
     for (const key of inMemoryCache.keys()) {
       if (key.startsWith(pattern)) inMemoryCache.delete(key);
@@ -55,6 +55,13 @@ function invalidateCache(pattern?: string) {
   } else {
     inMemoryCache.clear();
   }
+}
+
+export function notifyOrdersUpdated() {
+  invalidateCache('getOrders');
+  invalidateCache('getOrderById');
+  invalidateCache('getDetail');
+  window.dispatchEvent(new Event('orders-updated'));
 }
 
 function buildParams(filters: Record<string, any>): string {
@@ -110,9 +117,14 @@ export const dashboardApi = {
 export const commerceApi = {
   login: () => api.post('/v1/commerce/login'),
   syncOrders: (options: Record<string, any> = {}) => {
+    invalidateCache('getOrders');
     return api.post(`/v1/commerce/sync?${buildParams(options)}`);
   },
-  syncAll: () => api.post('/v1/commerce/sync/all'),
+  syncAll: () => {
+    invalidateCache('getOrders');
+    return api.post('/v1/commerce/sync/all');
+  },
+  resetCursor: () => api.post('/v1/commerce/sync/reset-cursor'),
   getSyncStatus: () => api.get('/v1/commerce/sync/status'),
   getOrders: (filters: Record<string, any> = {}) => {
     const key = `getOrders:${JSON.stringify(filters)}`;

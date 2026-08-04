@@ -565,18 +565,17 @@ async function syncAll(req, res) {
     if (status.running) {
       return res.json({ success: true, data: { message: 'Sync already running', running: true } });
     }
-    commerceSync.runSyncAll();
-    const lastSynced = status.totalOrdersSynced + status.totalLogisticsSynced;
-    res.json({
-      success: true,
-      data: {
-        message: `Synced ${lastSynced} items`,
-        ordersSynced: status.totalOrdersSynced,
-        logisticsSynced: status.totalLogisticsSynced,
-        tasksCreated: status.tasksCreated,
-        running: true,
-      },
-    });
+    const result = await commerceSync.runSyncAll();
+    res.json({ success: true, data: { ...result, running: false } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: error.message } });
+  }
+}
+
+async function resetCursor(req, res) {
+  try {
+    commerceSync.resetCursor();
+    res.json({ success: true, data: { message: 'Sync cursor reset' } });
   } catch (error) {
     res.status(500).json({ success: false, error: { message: error.message } });
   }
@@ -595,6 +594,7 @@ module.exports = {
   syncOrders,
   syncExternalNonHeavy,
   syncAll,
+  resetCursor,
   getSyncStatus,
   getOrders,
   getSegmentCounts,

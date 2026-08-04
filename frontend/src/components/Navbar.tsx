@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useSimulatedTime } from '../hooks/useSimulatedTime';
 import { io, Socket } from 'socket.io-client';
-import { commerceApi } from '../services/api';
+import { commerceApi, notifyOrdersUpdated } from '../services/api';
 
 const NAV_LINKS = [
   { to: '/today', label: "Today's Work", icon: CheckSquare },
@@ -52,6 +52,10 @@ export default function Navbar() {
     const socket: Socket = io(window.location.origin, { transports: ['websocket'] });
     socket.on('new-orders', (data: { count: number }) => {
       setNewOrderCount(prev => prev + data.count);
+      notifyOrdersUpdated();
+    });
+    socket.on('order-updates', () => {
+      notifyOrdersUpdated();
     });
     return () => { socket.disconnect(); };
   }, [token]);

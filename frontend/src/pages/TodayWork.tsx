@@ -8,7 +8,7 @@ import { getSLAInfo } from '../utils/ruleEngine';
 import { entityName } from '../utils/order';
 import {
   PhoneCall, Store, Clock, RefreshCw, Star, AlertTriangle,
-  Zap, ArrowRight, CheckCircle2, TrendingUp, Filter, X, Truck,
+  Zap, ArrowRight, CheckCircle2, TrendingUp, Filter, X, Truck, Calendar,
 } from 'lucide-react';
 
 
@@ -30,6 +30,7 @@ export default function TodayWork() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
+  const [rescheduledCount, setRescheduledCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedQueue, setSelectedQueue] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<{ count: number } | null>(null);
@@ -42,6 +43,7 @@ export default function TodayWork() {
         dashboardApi.getToday().catch(() => null),
       ]);
       setOrders(dashRes?.data?.orders || []);
+      setRescheduledCount(dashRes?.data?.counts?.rescheduled || 0);
       setSummary(todayRes?.data || null);
     } catch (err) {
       console.error('Failed to load dashboard', err);
@@ -52,6 +54,11 @@ export default function TodayWork() {
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('orders-updated', fetchData);
+    return () => window.removeEventListener('orders-updated', fetchData);
   }, []);
 
   const handleSync = async () => {
@@ -174,6 +181,19 @@ export default function TodayWork() {
             </button>
           );
         })}
+
+        <button
+          onClick={() => navigate('/orders')}
+          className="rounded-xl border p-4 text-left transition-all cursor-pointer bg-white border-amber-300 shadow-sm hover:shadow-md"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="p-2 rounded-lg bg-amber-500/10">
+              <Calendar className="w-5 h-5 text-amber-600" />
+            </div>
+            <span className="text-2xl font-black text-slate-900 font-mono">{rescheduledCount}</span>
+          </div>
+          <div className="font-bold text-xs text-slate-800 truncate">Rescheduled</div>
+        </button>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">

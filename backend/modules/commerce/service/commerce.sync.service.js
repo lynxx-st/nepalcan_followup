@@ -38,7 +38,11 @@ class CommerceSyncService {
   }
 
   getSyncStatus() {
-    return { ...this.syncStatus };
+    return { ...this.syncStatus, lastSyncCursor: this.lastSyncCursor || null };
+  }
+
+  resetCursor() {
+    this.lastSyncCursor = null;
   }
 
   async runSyncAll() {
@@ -87,12 +91,30 @@ class CommerceSyncService {
     }
   }
 
+  // Legacy docs stored customer/vendor as plain strings; nested $set on
+  // customer.confirmationStatus / vendor.vendorStatus then fails on a scalar.
+  // Convert them to objects once (idempotent).
+  async migrateLegacySchema() {
+    const r = await CommerceOrder.updateMany(
+      { customer: { $type: 'string' } },
+      [{ $set: { customer: { name: '$customer', confirmationStatus: 'pending' } } }]
+    );
+    const v = await CommerceOrder.updateMany(
+      { vendor: { $type: 'string' } },
+      [{ $set: { vendor: { name: '$vendor', vendorStatus: 'unassigned' } } }]
+    );
+    if (r.modifiedCount + v.modifiedCount > 0) {
+      logger.info('Migrated legacy customer/vendor fields', { customers: r.modifiedCount, vendors: v.modifiedCount });
+    }
+  }
+
   async syncOrders(options = {}) {
     const startTime = Date.now();
     const { page = 1, limit = 500, status = 'Active', unattendedOrders = '', updatedAfter } = options;
 
     logger.info('Starting order sync', { page, limit, status, updatedAfter: updatedAfter || this.lastSyncCursor });
 
+    await this.migrateLegacySchema();
     await this.loadSettings();
     const token = await commerceAuth.getToken();
     const headers = {
@@ -497,6 +519,18 @@ class CommerceSyncService {
     return { priority, slaMinutes, taskType };
   }
 
+  // ponytail: the logistics API (external-non-heavy) returns delivery event/status
+  // but NOT orderStatus. Infer it so shipped/delivered orders never fall back into
+  // pending_confirmation. Upgrade: read authoritative orderStatus once the API provides it.
+  inferOrderStatusFromLogistics(item, fallback) {
+    const de = (item.externalDeliveryEvent || '').toLowerCase();
+    const ds = (item.externalDeliveryStatus || '').toLowerCase();
+    if (de.includes('delivered') || de.includes('return') || ds.includes('delivered')) return 'Delivered';
+    if (de.includes('shipped') || de.includes('in_transit') || de.includes('dispatched') || de.includes('arrived')) return 'Shipped';
+    if (de.includes('pickup') || de.includes('collected')) return 'Processing';
+    return fallback;
+  }
+
   computeWorkflowStage(order) {
     const cs = order.customer?.confirmationStatus || 'pending';
     const vs = order.vendor?.vendorStatus || 'unassigned';
@@ -620,6 +654,7 @@ class CommerceSyncService {
     let hasMore = true;
     let totalUpdated = 0;
     let tasksCreated = 0;
+    const changedOrders = [];
     const seenIds = new Set();
     while (hasMore && currentPage <= this.maxPages) {
       const url = `${this.baseUrl}/external-non-heavy?status=Active&page=${currentPage}&limit=${limit}`;
@@ -644,11 +679,27 @@ class CommerceSyncService {
         const itemIds = items.map(o => o._id);
         const existingOrders = await CommerceOrder.find({ commerceOrderId: { $in: itemIds } }).lean();
         const existingSet = new Set(existingOrders.map(o => o.commerceOrderId));
+        const existingMap = {};
+        for (const doc of existingOrders) existingMap[doc.commerceOrderId] = doc;
 
         const bulkOps = [];
         for (const item of items) {
           if (!existingSet.has(item._id)) continue;
           totalUpdated++;
+
+          const existing = existingMap[item._id];
+          const orderStatus = this.inferOrderStatusFromLogistics(item, existing?.commerce?.orderStatus || null);
+          const order = {
+            commerce: { orderStatus },
+            customer: { confirmationStatus: existing?.customer?.confirmationStatus || 'pending' },
+            vendor: { vendorStatus: existing?.vendor?.vendorStatus || 'unassigned' },
+          };
+          const workflowStage = this.computeWorkflowStage(order);
+          const workflowPriority = this.computeWorkflowPriority(order);
+
+          if (existing?.commerce?.orderStatus !== orderStatus) {
+            changedOrders.push({ orderId: item.orderId, changes: [{ field: 'commerce.orderStatus', from: existing?.commerce?.orderStatus, to: orderStatus }] });
+          }
 
           bulkOps.push({
             updateOne: {
@@ -657,6 +708,7 @@ class CommerceSyncService {
                 $set: {
                   'commerce.deliveryStatus': item.externalDeliveryStatus || null,
                   'commerce.deliveryEvent': item.externalDeliveryEvent || null,
+                  'commerce.orderStatus': orderStatus,
                   'commerce.orderType': item.orderType || null,
                   'commerce.branch': item.branch || null,
                   'commerce.sender': item.sender || null,
@@ -666,6 +718,8 @@ class CommerceSyncService {
                   'commerce.dispatchMode': item.dispatchMode || null,
                   'commerce.externalNonHeavyLogisticsId': item.externalNonHeavyLogisticsId || null,
                   'commerce.pickupTicketId': item.pickupTicketId || null,
+                  workflowStage,
+                  workflowPriority,
                   externalUpdatedAt: item.updatedAt || item.updated_at || null,
                   lastSyncedAt: new Date(),
                 },
@@ -720,6 +774,9 @@ class CommerceSyncService {
 
         if (bulkOps.length > 0) {
           await CommerceOrder.bulkWrite(bulkOps);
+          if (changedOrders.length > 0 && global.io) {
+            global.io.emit('order-updates', { count: changedOrders.length, orders: changedOrders });
+          }
         }
 
         if (items.length < limit) {

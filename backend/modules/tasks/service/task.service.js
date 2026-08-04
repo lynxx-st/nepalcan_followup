@@ -18,6 +18,21 @@ function priorityScoreSwitch() {
 }
 
 class TaskService {
+  // ponytail: orders confirmed by both customer+vendor are "done", and
+  // rescheduled orders live in the rescheduled list — neither should surface
+  // in actionable queues. Upgrade: single $lookup aggregation if task volume
+  // ever makes two queries expensive.
+  async getClosedOrderIds() {
+    const orders = await CommerceOrder.find({
+      $or: [
+        { 'customer.confirmationStatus': 'confirmed', 'vendor.vendorStatus': 'accepted' },
+        { 'customer.confirmationStatus': 'rescheduled' },
+        { 'vendor.vendorStatus': 'rescheduled' },
+      ],
+    }).select('commerceOrderId').lean();
+    return orders.map((o) => o.commerceOrderId);
+  }
+
   async createTask(data) {
     const task = await Task.create(data);
     await this.addTimeline(task._id, 'system', `Task created: ${task.type}`);
@@ -46,6 +61,8 @@ class TaskService {
     if (type) query.type = type;
     if (priority) query.priority = priority;
     if (assigneeId) query.assigneeId = assigneeId;
+    const closed = await this.getClosedOrderIds();
+    if (closed.length) query['sourceOrder.orderId'] = { $nin: closed };
     const skip = (page - 1) * limit;
     const [tasks, total] = await Promise.all([
       Task.find(query)
@@ -173,11 +190,16 @@ class TaskService {
     const assigneeMatch = assigneeId
       ? [{ assigneeId }, { assigneeId: null }, { assigneeId: { $exists: false } }]
       : [{ assigneeId: null }, { assigneeId: { $exists: false } }];
+    const closed = await this.getClosedOrderIds();
+    const orderMatch = closed.length
+      ? { 'sourceOrder.orderId': { $nin: closed } }
+      : {};
     const [task] = await Task.aggregate([
       {
         $match: {
           $or: assigneeMatch,
           status: { $in: ['pending', 'overdue'] },
+          ...orderMatch,
         },
       },
       { $addFields: { priorityScore: priorityScoreSwitch() } },

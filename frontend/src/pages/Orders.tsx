@@ -62,6 +62,12 @@ export default function Orders() {
   }, [page, activeSegment, searchQuery]);
 
   useEffect(() => {
+    const onUpdate = () => { fetchOrders(page); commerceApi.getSegmentCounts().then(res => { if (res?.data) setSegmentCounts(res.data); }).catch(console.error); };
+    window.addEventListener('orders-updated', onUpdate);
+    return () => window.removeEventListener('orders-updated', onUpdate);
+  }, [page, activeSegment, searchQuery]);
+
+  useEffect(() => {
     commerceApi.getSegmentCounts().then(res => {
       if (res?.data) setSegmentCounts(res.data);
     }).catch(console.error);
