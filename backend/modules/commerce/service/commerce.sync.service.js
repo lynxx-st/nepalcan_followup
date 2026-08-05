@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { CommerceOrder, Task } = require('../../../database/models');
+const { CommerceOrder, Task, OrderReturn } = require('../../../database/models');
 const commerceAuth = require('./commerce.auth.service');
 const taskGeneratorService = require('../../../modules/tasks/generator/task-generator.service');
 const taskService = require('../../../modules/tasks/service/task.service');
@@ -17,12 +17,15 @@ class CommerceSyncService {
     this.maxPages = 50;
     this.lastSyncCursor = null;
     this.logisticsFollowupHours = 6;
+    this.reviewFollowupDelayHours = 24;
     this.priorityAmountThreshold = 1000;
     this.slaDefaults = {
       'customer-confirmation': 30,
       'vendor-call': 120,
       'cancelled-recovery': 15,
       'review-call': 1440,
+      'return-customer-response': 60,
+      'return-vendor-response': 120,
       escalation: 10,
       'logistics-followup': 120,
     };
@@ -60,6 +63,9 @@ class CommerceSyncService {
       this.syncStatus.totalLogisticsSynced = logisticsResult.totalUpdated;
       this.syncStatus.tasksCreated = logisticsResult.tasksCreated;
 
+      const returnsResult = await this.syncOrderReturns();
+      this.syncStatus.totalReturnsSynced = returnsResult.totalSynced || 0;
+
       this.syncStatus.lastCompletedAt = new Date().toISOString();
       return {
         ordersSynced: orderResult.totalFetched,
@@ -84,6 +90,9 @@ class CommerceSyncService {
       if (settings.customerConfirmationSlaMinutes) this.slaDefaults['customer-confirmation'] = settings.customerConfirmationSlaMinutes;
       if (settings.vendorCallSlaMinutes) this.slaDefaults['vendor-call'] = settings.vendorCallSlaMinutes;
       if (settings.cancelledRecoverySlaMinutes) this.slaDefaults['cancelled-recovery'] = settings.cancelledRecoverySlaMinutes;
+      if (settings.reviewFollowupDelayHours !== undefined) this.reviewFollowupDelayHours = settings.reviewFollowupDelayHours;
+      if (settings.returnCustomerResponseSlaMinutes) this.slaDefaults['return-customer-response'] = settings.returnCustomerResponseSlaMinutes;
+      if (settings.returnVendorResponseSlaMinutes) this.slaDefaults['return-vendor-response'] = settings.returnVendorResponseSlaMinutes;
       if (settings.reviewCallSlaMinutes) this.slaDefaults['review-call'] = settings.reviewCallSlaMinutes;
       if (settings.escalationSlaMinutes) this.slaDefaults.escalation = settings.escalationSlaMinutes;
     } catch (err) {
@@ -383,7 +392,7 @@ class CommerceSyncService {
         addedUser: order.addedUser,
         items: order.items || [],
         logisticsOrderId: order.logisticsOrderId,
-        externalLogisticsOrderId: order.externalLogisticsOrderId,
+        externalLogisticsOrderId: order.externalLogisticsOrderId || order.externalNonHeavyLogisticsId,
         externalHeavyLogisticsId: order.externalHeavyLogisticsId,
         externalNonHeavyLogisticsId: order.externalNonHeavyLogisticsId,
         pickupTicketId: order.pickupTicketId,
@@ -396,6 +405,8 @@ class CommerceSyncService {
         cancelledBy: order.cancelledBy,
         cancelledReason: order.cancelledReason,
       },
+      externalStatusHistory: order.externalStatusHistory || [],
+      externalLogisticsOrderId: order.externalLogisticsOrderId || order.externalNonHeavyLogisticsId,
       externalUpdatedAt: order.updatedAt || order.updated_at || order.lastUpdatedAt,
     };
 
@@ -531,23 +542,104 @@ class CommerceSyncService {
     return fallback;
   }
 
+  isOrderSlaBreached(order) {
+    if (!order) return false;
+    if (order.isOverdue || order.taskStatus === 'overdue' || order.slaBreached) return true;
+
+    const dueAtStr = order.dueAt || order.activeTaskDueAt || order.slaDueAt;
+    if (dueAtStr) {
+      return new Date() > new Date(dueAtStr);
+    }
+
+    const refTime = order.customerCalledAt || order.workflowUpdatedAt || order.createdAt || order.externalUpdatedAt;
+    if (refTime) {
+      const slaMinutes = order.slaMinutes || this.slaDefaults?.['customer-confirmation'] || 30;
+      const elapsedMs = Date.now() - new Date(refTime).getTime();
+      if (elapsedMs > slaMinutes * 60 * 1000) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   computeWorkflowStage(order) {
-    const cs = order.customer?.confirmationStatus || 'pending';
-    const vs = order.vendor?.vendorStatus || 'unassigned';
-    const os = (order.commerce?.orderStatus || '').toLowerCase();
+    const cs = order.customer?.confirmationStatus || order.confirmationStatus || 'pending';
+    const vs = order.vendor?.vendorStatus || order.vendorStatus || 'unassigned';
+    const os = (order.commerce?.orderStatus || order.orderStatus || '').toLowerCase();
 
     if (cs === 'rescheduled' || vs === 'rescheduled') return 'rescheduled';
     if (os === 'shipped') return 'shipped';
-    if (['delivered', 'return delivered'].includes(os)) return 'delivered_followup';
-    if (cs === 'confirmed' && vs === 'accepted') return 'done';
-    if (cs === 'confirmed' && ['pending', ''].includes(os)) return 'confirmed_unprocessed';
+
+    // Delivered orders: check if review followup delay has passed
+    if (['delivered', 'return delivered'].includes(os)) {
+      const deliveredAt = order.externalUpdatedAt || order.commerce?.deliveryEvent ? new Date() : null;
+      if (deliveredAt) {
+        const delayMs = this.reviewFollowupDelayHours * 60 * 60 * 1000;
+        const timeSinceDelivery = Date.now() - new Date(deliveredAt).getTime();
+        if (timeSinceDelivery >= delayMs) {
+          return 'pending_review';
+        }
+      }
+      return 'pending_review';
+    }
+
+    if (os === 'processing') return 'confirmed_unprocessed';
+
+    // Only after BOTH customer and vendor are confirmed, move to confirmed_unprocessed
+    if (cs === 'confirmed' && vs === 'accepted') {
+      return 'confirmed_unprocessed';
+    }
+
+    // Customer follow-up accepted / confirmed -> move to marked done inside pre processing
+    if (cs === 'confirmed') {
+      const isSlaBreached = this.isOrderSlaBreached(order);
+      if (isSlaBreached) {
+        return 'confirmed_unprocessed';
+      }
+      return 'done';
+    }
+
     if (cs === 'pending' && os === 'pending') return 'pending_confirmation';
     return 'other';
+  }
+
+  async autoUpdateSlaBreachedOrders() {
+    try {
+      const doneOrders = await CommerceOrder.find({
+        workflowStage: 'done',
+        'commerce.orderStatus': { $in: ['Pending', 'pending', ''] },
+      }).lean();
+
+      for (const order of doneOrders) {
+        if (this.isOrderSlaBreached(order)) {
+          await CommerceOrder.updateOne(
+            { _id: order._id },
+            { $set: { workflowStage: 'confirmed_unprocessed', workflowUpdatedAt: new Date() } }
+          );
+        }
+      }
+    } catch (err) {
+      logger.error('Failed to auto update SLA breached orders:', err);
+    }
   }
 
   computeWorkflowPriority(order) {
     const p = this.getPriorityForOrder(order);
     return p ? p.priority : 'low';
+  }
+
+  getTaskTypeForStage(stage) {
+    const map = {
+      pending_confirmation: 'customer-confirmation',
+      confirmed_unprocessed: 'vendor-call',
+      shipped: 'logistics-followup',
+      pending_review: 'review-call',
+      customer_response: 'return-customer-response',
+      vendor_response: 'return-vendor-response',
+      rescheduled: 'cancelled-recovery',
+    };
+    return map[stage] || 'customer-confirmation';
   }
 
   async getOrderStatus(commerceOrderId) {
@@ -629,11 +721,31 @@ class CommerceSyncService {
     for (const t of tasks) {
       taskMap[t.sourceOrder?.orderId] = { taskId: t._id, taskType: t.type };
     }
-    const enrichedOrders = orders.map(o => ({
-      ...o,
-      taskId: taskMap[o.commerceOrderId]?.taskId || null,
-      activeTaskType: taskMap[o.commerceOrderId]?.taskType || null,
-    }));
+    const enrichedOrders = orders.map(o => {
+      const rawTotal = o.totalAmount || o.commerce?.totalAmount;
+      const itemsList = o.commerce?.items || o.items || [];
+      const computedTotal = itemsList.reduce((acc, it) => {
+        const p = Number(it.price || it.product?.price || it.product?.sellingPrice || it.variant?.sellingPrice || 0);
+        return acc + (p * Number(it.quantity || 1));
+      }, 0);
+      const totalAmount = rawTotal || computedTotal || 0;
+
+      const activeTask = taskMap[o.commerceOrderId];
+      const activeTaskType = activeTask?.taskType || this.getTaskTypeForStage(o.workflowStage);
+      const slaMinutes = activeTask?.slaMinutes || this.slaDefaults[activeTaskType] || 60;
+      const dueAt = activeTask?.dueAt || (o.workflowUpdatedAt ? new Date(new Date(o.workflowUpdatedAt).getTime() + slaMinutes * 60000).toISOString() : null);
+
+      return {
+        ...o,
+        totalAmount,
+        taskId: activeTask?.taskId || null,
+        activeTaskType,
+        priority: o.workflowPriority || 'low',
+        slaMinutes,
+        dueAt,
+        externalLogisticsOrderId: o.externalLogisticsOrderId || o.commerce?.externalLogisticsOrderId || o.commerce?.externalNonHeavyLogisticsId,
+      };
+    });
 
     return { orders: enrichedOrders, total, page, limit };
   }
@@ -701,31 +813,39 @@ class CommerceSyncService {
             changedOrders.push({ orderId: item.orderId, changes: [{ field: 'commerce.orderStatus', from: existing?.commerce?.orderStatus, to: orderStatus }] });
           }
 
-          bulkOps.push({
-            updateOne: {
-              filter: { commerceOrderId: item._id },
-              update: {
-                $set: {
-                  'commerce.deliveryStatus': item.externalDeliveryStatus || null,
-                  'commerce.deliveryEvent': item.externalDeliveryEvent || null,
-                  'commerce.orderStatus': orderStatus,
-                  'commerce.orderType': item.orderType || null,
-                  'commerce.branch': item.branch || null,
-                  'commerce.sender': item.sender || null,
-                  'commerce.receiver': item.receiver || null,
-                  'commerce.destinationBranch': item.destinationBranch || null,
-                  'commerce.shippingType': item.shippingType || null,
-                  'commerce.dispatchMode': item.dispatchMode || null,
-                  'commerce.externalNonHeavyLogisticsId': item.externalNonHeavyLogisticsId || null,
-                  'commerce.pickupTicketId': item.pickupTicketId || null,
-                  workflowStage,
-                  workflowPriority,
-                  externalUpdatedAt: item.updatedAt || item.updated_at || null,
-                  lastSyncedAt: new Date(),
-                },
-              },
-            },
-          });
+bulkOps.push({
+             updateOne: {
+               filter: { commerceOrderId: item._id },
+               update: {
+                 $set: {
+                   'commerce.deliveryStatus': item.externalDeliveryStatus || null,
+                   'commerce.deliveryEvent': item.externalDeliveryEvent || null,
+                   'commerce.orderStatus': orderStatus,
+                   'commerce.orderType': item.orderType || null,
+                   'commerce.branch': item.branch || null,
+                   'commerce.sender': item.sender || null,
+                   'commerce.receiver': item.receiver || null,
+                   'commerce.destinationBranch': item.destinationBranch || null,
+                   'commerce.shippingType': item.shippingType || null,
+                   'commerce.dispatchMode': item.dispatchMode || null,
+                   'commerce.externalNonHeavyLogisticsId': item.externalNonHeavyLogisticsId || null,
+                   'commerce.externalLogisticsOrderId': item.externalNonHeavyLogisticsId || item.externalLogisticsOrderId || null,
+                   'commerce.pickupTicketId': item.pickupTicketId || null,
+                   externalLogisticsOrderId: item.externalNonHeavyLogisticsId || item.externalLogisticsOrderId || null,
+                   externalStatusHistory: item.externalStatusHistory || [{
+                     event: item.externalDeliveryEvent || 'unknown',
+                     status: item.externalDeliveryStatus || 'Unknown',
+                     rawPayload: item,
+                     receivedAt: new Date(),
+                   }],
+                   workflowStage,
+                   workflowPriority,
+                   externalUpdatedAt: item.updatedAt || item.updated_at || null,
+                   lastSyncedAt: new Date(),
+                 },
+               },
+             },
+           });
 
           const notPickedUp = !item.externalDeliveryEvent || item.externalDeliveryEvent === 'dropoff_collected';
           if (item.orderStatus === 'Processing' && notPickedUp) {
@@ -807,6 +927,76 @@ class CommerceSyncService {
     });
 
     return { totalUpdated, totalPages: currentPage - 1, tasksCreated };
+  }
+
+  async syncOrderReturns(options = {}) {
+    const startTime = Date.now();
+    const { page = 1, limit = 1000 } = options;
+    logger.info('Starting external order returns sync', { page, limit });
+
+    await this.loadSettings();
+    const token = await commerceAuth.getToken();
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+
+    const url = `https://commerce.thecanbrand.com/api/order-return/provider/list?status=Active&keywords=&page=${page}&limit=${limit}&vendor=&from=&to=&returnStatus=`;
+
+    try {
+      const response = await axios.get(url, { headers, timeout: 15000 });
+      const returnList = response.data?.data || response.data || [];
+      if (!Array.isArray(returnList)) {
+        logger.warn('Order returns sync returned non-array data');
+        return { totalSynced: 0, summary: response.data?.summary || {} };
+      }
+
+      let totalSynced = 0;
+      for (const item of returnList) {
+        if (!item._id) continue;
+        const externalReturnId = String(item._id);
+        const orderInfo = item.order || {};
+        const commerceOrderId = orderInfo._id ? String(orderInfo._id) : null;
+        const orderId = orderInfo.orderId || null;
+        const customerProfile = orderInfo.customerProfile || item.customerProfile || {};
+        const customerPhone = customerProfile.phone || item.customerPhone || '';
+        const vendor = orderInfo.vendor || item.vendor || {};
+
+        const updateData = {
+          externalReturnId,
+          commerceOrderId,
+          orderId,
+          order: orderInfo,
+          vendor,
+          customerProfile,
+          customerPhone,
+          items: item.items || [],
+          returnReason: item.returnReason || '',
+          type: item.type || 'Return',
+          attachments: item.attachments || [],
+          status: item.status || 'Initiated',
+          superAdminStatus: item.superAdminStatus || 'None',
+          rejectReason: item.rejectReason || null,
+          concernReason: item.concernReason || null,
+          isActive: item.isActive !== undefined ? item.isActive : true,
+          createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
+          updatedAt: item.updatedAt ? new Date(item.updatedAt) : new Date(),
+        };
+
+        await OrderReturn.findOneAndUpdate(
+          { externalReturnId },
+          { $setOnInsert: { customerResponseStatus: 'pending', vendorResponseStatus: 'pending', workflowStage: 'customer_response' }, $set: updateData },
+          { upsert: true, new: true }
+        );
+        totalSynced++;
+      }
+
+      logger.info('Order returns sync completed', { totalSynced, elapsedMs: Date.now() - startTime });
+      return { totalSynced, summary: response.data?.summary || {} };
+    } catch (err) {
+      logger.error('Failed to sync order returns', { error: err.message });
+      return { totalSynced: 0, error: err.message };
+    }
   }
 }
 

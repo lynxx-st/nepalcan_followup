@@ -1,7 +1,7 @@
 const axios = require('axios');
 const commerceAuth = require('../service/commerce.auth.service');
 const { commerceSync } = require('../service/commerce.sync.service');
-const { CommerceOrder, Task } = require('../../../database/models');
+const { CommerceOrder, Task, OrderReturn } = require('../../../database/models');
 const config = require('../../../config');
 const { decodeBase64 } = require('../../../utils/decode');
 const recoveryService = require('../../../modules/recovery/service/recovery.service');
@@ -112,6 +112,7 @@ async function getOrders(req, res) {
       status, paymentStatus, vendor, customer 
     } = req.query;
     
+    await commerceSync.autoUpdateSlaBreachedOrders();
     const rbacQuery = buildRbacQuery(req.user);
     
     const filters = {
@@ -199,6 +200,7 @@ async function getReviews(req, res) {
 
 async function getSegmentCounts(req, res) {
   try {
+    await commerceSync.autoUpdateSlaBreachedOrders();
     const rbacQuery = buildRbacQuery(req.user);
     
     const counts = await CommerceOrder.aggregate([
@@ -210,10 +212,11 @@ async function getSegmentCounts(req, res) {
       pending_confirmation: 0,
       pending_review: 0,
       confirmed_unprocessed: 0,
-      delivered_followup: 0,
       done: 0,
       rescheduled: 0,
       shipped: 0,
+      customer_response: 0,
+      vendor_response: 0,
       other: 0
     };
     
@@ -315,6 +318,7 @@ async function getOrderDetail(req, res) {
 
       const cached = {
         ...raw,
+        orderStatus: existing.commerce?.orderStatus || existing.orderStatus || raw.orderStatus,
         notes: mergeNotes(existing.notes, raw.notes),
         confirmationStatus: existing.customer?.confirmationStatus || 'pending',
         vendorStatus: existing.vendor?.vendorStatus || 'unassigned',
@@ -333,6 +337,8 @@ async function getOrderDetail(req, res) {
         receiver: existing.commerce?.receiver,
         destinationBranch: existing.commerce?.destinationBranch,
         externalNonHeavyLogisticsId: existing.commerce?.externalNonHeavyLogisticsId,
+        externalLogisticsOrderId: existing.externalLogisticsOrderId || existing.commerce?.externalLogisticsOrderId,
+        externalStatusHistory: existing.externalStatusHistory || [],
         pickupTicketId: existing.commerce?.pickupTicketId,
         activeTaskId: activeTask?._id || null,
       };
@@ -378,6 +384,7 @@ async function getOrderDetail(req, res) {
       // Return DECODED response
       const decodedResponse = {
         ...richData,
+        orderStatus: existing?.commerce?.orderStatus || existing?.orderStatus || richData.orderStatus,
         notes: mergeNotes(existing?.notes, richData.notes),
         confirmationStatus: existing?.customer?.confirmationStatus || 'pending',
         vendorStatus: existing?.vendor?.vendorStatus || 'unassigned',
@@ -396,6 +403,8 @@ async function getOrderDetail(req, res) {
         receiver: existing?.commerce?.receiver || null,
         destinationBranch: existing?.commerce?.destinationBranch || null,
         externalNonHeavyLogisticsId: existing?.commerce?.externalNonHeavyLogisticsId || null,
+        externalLogisticsOrderId: existing?.externalLogisticsOrderId || existing?.commerce?.externalLogisticsOrderId,
+        externalStatusHistory: existing?.externalStatusHistory || [],
         pickupTicketId: existing?.commerce?.pickupTicketId || null,
         activeTaskId: activeTask?._id || null,
       };
@@ -417,7 +426,9 @@ async function getOrderDetail(req, res) {
       orderStatus: existing.commerce?.orderStatus,
       paymentStatus: existing.commerce?.paymentStatus,
       paymentMethod: existing.commerce?.paymentMethod,
-      totalAmount: existing.commerce?.totalAmount,
+      totalAmount: existing.totalAmount || existing.commerce?.totalAmount || (existing.commerce?.items || existing.items || []).reduce((acc, it) => acc + (Number(it.price || it.product?.price || it.product?.sellingPrice || it.variant?.sellingPrice || 0) * Number(it.quantity || 1)), 0) || 0,
+      externalLogisticsOrderId: existing.externalLogisticsOrderId || existing.commerce?.externalLogisticsOrderId,
+      externalStatusHistory: existing.externalStatusHistory || [],
       activeTaskId: activeTask?._id || null,
       cached: true,
     };
@@ -517,6 +528,20 @@ async function updateOrderStatus(req, res) {
     updated.workflowPriority = commerceSync.computeWorkflowPriority(updated);
     await updated.save();
 
+    // Auto-complete active tasks matching updated stage
+    if (confirmationStatus === 'confirmed') {
+      await Task.updateMany(
+        { orderId: commerceOrderId, type: 'customer-confirmation', status: { $in: ['pending', 'in-progress', 'overdue'] } },
+        { $set: { status: 'completed', outcome: 'Customer Confirmed', completedAt: new Date() } }
+      );
+    }
+    if (vendorStatus === 'accepted') {
+      await Task.updateMany(
+        { orderId: commerceOrderId, type: { $in: ['vendor-call', 'vendor-delay'] }, status: { $in: ['pending', 'in-progress', 'overdue'] } },
+        { $set: { status: 'completed', outcome: 'Vendor Accepted', completedAt: new Date() } }
+      );
+    }
+
     if (orderStatus && orderStatus !== prevStatus) {
       const isCancel = orderStatus === 'Cancelled';
       const wasCancel = prevStatus === 'Cancelled';
@@ -589,6 +614,94 @@ async function getSyncStatus(req, res) {
   }
 }
 
+async function getReturns(req, res) {
+  try {
+    const { stage = 'customer_response', search, page = 1, limit = 20 } = req.query;
+    const query = {};
+    if (stage) query.workflowStage = stage;
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      query.$or = [
+        { externalReturnId: regex },
+        { orderId: regex },
+        { commerceOrderId: regex },
+        { 'customerProfile.name': regex },
+        { customerPhone: regex },
+        { 'vendor.name': regex },
+        { returnReason: regex },
+      ];
+    }
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [returns, total] = await Promise.all([
+      OrderReturn.find(query).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
+      OrderReturn.countDocuments(query),
+    ]);
+
+    const [custCount, vendCount] = await Promise.all([
+      OrderReturn.countDocuments({ workflowStage: 'customer_response' }),
+      OrderReturn.countDocuments({ workflowStage: 'vendor_response' }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        returns,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        counts: {
+          customer_response: custCount,
+          vendor_response: vendCount,
+        },
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: error.message } });
+  }
+}
+
+async function updateReturnStatus(req, res) {
+  try {
+    const { returnId } = req.params;
+    const { customerResponseStatus, vendorResponseStatus } = req.body;
+    const update = {};
+    if (customerResponseStatus) {
+      update.customerResponseStatus = customerResponseStatus;
+      if (customerResponseStatus === 'confirmed') {
+        update.workflowStage = 'vendor_response';
+      } else if (customerResponseStatus === 'rejected') {
+        update.workflowStage = 'completed';
+      }
+    }
+    if (vendorResponseStatus) {
+      update.vendorResponseStatus = vendorResponseStatus;
+      if (['accepted', 'rejected'].includes(vendorResponseStatus)) {
+        update.workflowStage = 'completed';
+      }
+    }
+
+    const updated = await OrderReturn.findByIdAndUpdate(returnId, { $set: update }, { new: true });
+    if (!updated) {
+      return res.status(404).json({ success: false, error: { message: 'Return not found' } });
+    }
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: error.message } });
+  }
+}
+
+async function syncReturns(req, res) {
+  try {
+    const result = await commerceSync.syncOrderReturns();
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: error.message } });
+  }
+}
+
 module.exports = {
   login,
   syncOrders,
@@ -605,4 +718,7 @@ module.exports = {
   updateOrderPhone,
   updateOrderStatus,
   addOrderNote,
+  getReturns,
+  updateReturnStatus,
+  syncReturns,
 };

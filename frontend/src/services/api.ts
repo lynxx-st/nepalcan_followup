@@ -153,6 +153,9 @@ export const commerceApi = {
     invalidateCache('getDetail');
     return api.put(`/v1/commerce/orders/${id}/status`, data);
   },
+  getReturns: (filters: Record<string, any> = {}) => api.get(`/v1/commerce/returns?${buildParams(filters)}`),
+  updateReturnStatus: (returnId: string, data: Record<string, any>) => api.put(`/v1/commerce/returns/${returnId}/status`, data),
+  syncReturns: () => api.post('/v1/commerce/sync/returns'),
 };
 
 export const noteApi = {
@@ -175,6 +178,12 @@ export const adminApi = {
   updateUser: (id: string, data: Record<string, any>) => api.patch(`/v1/admin/users/${id}`, data),
   resetPassword: (id: string, password: string) => api.post(`/v1/admin/users/${id}/reset-password`, { password }),
   listBranches: () => api.get('/v1/admin/branches'),
+};
+
+export const attendanceApi = {
+  getStatus: () => api.get('/v1/attendance/status'),
+  checkIn: (notes?: string) => api.post('/v1/attendance/check-in', { notes }),
+  checkOut: (notes?: string) => api.post('/v1/attendance/check-out', { notes }),
 };
 
 export default api;

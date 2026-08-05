@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { dashboardApi, taskApi } from '../services/api';
+import Breadcrumbs from '../components/Breadcrumbs';
 import {
-  BarChart3, PhoneCall, Clock, CheckCircle2, TrendingUp, Zap, User,
+  BarChart3, PhoneCall, Clock, CheckCircle2, TrendingUp, Zap, User, ShieldCheck,
 } from 'lucide-react';
 
 export default function Stats() {
@@ -31,21 +32,30 @@ export default function Stats() {
   }, []);
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64 text-slate-500">Loading analytics...</div>;
+    return (
+      <div className="flex items-center justify-center h-64 text-xs text-[#737373] animate-pulse">
+        Loading analytics metrics...
+      </div>
+    );
   }
 
   const s = stats;
 
   return (
-    <div className="space-y-6 pb-12">
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-6 border border-slate-800 shadow-xl flex items-start gap-4">
-        <div className="space-y-1">
+    <div className="space-y-6 pb-16 animate-in">
+      <Breadcrumbs items={[{ label: 'Operations Analytics' }]} />
+
+      {/* Header Container */}
+      <div className="card-blueprint p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
           <div className="flex items-center gap-2">
-            <BarChart3 className="w-6 h-6 text-indigo-400" />
-            <h1 className="text-2xl font-black text-white">Performance Analytics</h1>
+            <h1 className="text-xl font-bold text-[#0a0a0a]">Operations Analytics & SLAs</h1>
+            <span className="badge-pill badge-pill-solid text-[10px] uppercase">
+              Live Engine Metrics
+            </span>
           </div>
-          <p className="text-xs text-slate-300 max-w-xl">
-            Call efficiency, task completion, and operations metrics.
+          <p className="text-xs text-[#737373] mt-1">
+            Comprehensive metric tracking across call velocity, task resolution, and order volumes.
           </p>
         </div>
       </div>
@@ -53,97 +63,59 @@ export default function Stats() {
       {s?.dashboard && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                <span>Tasks Completed</span>
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-              </div>
-              <p className="text-3xl font-black text-slate-900">{s.dashboard.totalCompleted || 0}</p>
+            <div className="card-blueprint p-5">
+              <span className="text-xs font-medium uppercase tracking-wider text-[#737373]">Tasks Completed</span>
+              <p className="text-3xl font-bold text-[#0a0a0a] mt-1">{s.dashboard.totalCompleted || 0}</p>
+              <p className="text-[11px] text-[#737373] mt-1">Resolved task actions</p>
             </div>
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                <span>Overdue</span>
-                <Clock className="w-4 h-4 text-red-500" />
-              </div>
-              <p className="text-3xl font-black text-red-600">{s.dashboard.totalOverdue || 0}</p>
+            <div className="card-blueprint p-5">
+              <span className="text-xs font-medium uppercase tracking-wider text-[#737373]">SLA Breached</span>
+              <p className="text-3xl font-bold text-red-600 mt-1">{s.dashboard.totalOverdue || 0}</p>
+              <p className="text-[11px] text-[#737373] mt-1">Overdue follow-ups</p>
             </div>
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                <span>Today's Tasks</span>
-                <Zap className="w-4 h-4 text-amber-500" />
-              </div>
-              <p className="text-3xl font-black text-amber-600">{s.today?.summary?.total || 0}</p>
+            <div className="card-blueprint p-5">
+              <span className="text-xs font-medium uppercase tracking-wider text-[#737373]">Today's Created</span>
+              <p className="text-3xl font-bold text-[#0a0a0a] mt-1">{s.today?.summary?.total || 0}</p>
+              <p className="text-[11px] text-[#737373] mt-1">Generated tasks</p>
             </div>
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                <span>Recent Calls</span>
-                <PhoneCall className="w-4 h-4 text-blue-500" />
-              </div>
-              <p className="text-3xl font-black text-blue-600">{s.today?.recentCallLogs?.length || 0}</p>
+            <div className="card-blueprint p-5">
+              <span className="text-xs font-medium uppercase tracking-wider text-[#737373]">Recent Call Logs</span>
+              <p className="text-3xl font-bold text-[#0a0a0a] mt-1">{s.today?.recentCallLogs?.length || 0}</p>
+              <p className="text-[11px] text-[#737373] mt-1">Logged call entries</p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Orders</p>
-              <p className="text-2xl font-black text-slate-900">{s.dashboard.totalOrders || 0}</p>
+            <div className="card-blueprint p-5">
+              <span className="text-xs font-medium uppercase tracking-wider text-[#737373]">Total Commerce Orders</span>
+              <p className="text-2xl font-bold text-[#0a0a0a] mt-1">{s.dashboard.totalOrders || 0}</p>
             </div>
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Pending Orders</p>
-              <p className="text-2xl font-black text-yellow-600">{s.dashboard.pendingOrders || 0}</p>
+            <div className="card-blueprint p-5">
+              <span className="text-xs font-medium uppercase tracking-wider text-[#737373]">Pending Orders</span>
+              <p className="text-2xl font-bold text-[#0a0a0a] mt-1">{s.dashboard.pendingOrders || 0}</p>
             </div>
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Delivered</p>
-              <p className="text-2xl font-black text-emerald-600">{s.dashboard.deliveredOrders || 0}</p>
+            <div className="card-blueprint p-5">
+              <span className="text-xs font-medium uppercase tracking-wider text-[#737373]">Delivered Orders</span>
+              <p className="text-2xl font-bold text-[#0a0a0a] mt-1">{s.dashboard.deliveredOrders || 0}</p>
             </div>
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Cancelled</p>
-              <p className="text-2xl font-black text-red-600">{s.dashboard.cancelledOrders || 0}</p>
+            <div className="card-blueprint p-5">
+              <span className="text-xs font-medium uppercase tracking-wider text-[#737373]">Cancelled Orders</span>
+              <p className="text-2xl font-bold text-red-600 mt-1">{s.dashboard.cancelledOrders || 0}</p>
             </div>
           </div>
         </>
       )}
 
-      {s?.allTasks?.tasks && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="font-extrabold text-slate-900 text-sm uppercase tracking-wide mb-4">Task Breakdown</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="text-center p-4 bg-slate-50 rounded-xl">
-              <p className="text-2xl font-black text-slate-900">{s.allTasks.total || 0}</p>
-              <p className="text-xs text-slate-500">Total Tasks</p>
-            </div>
-            <div className="text-center p-4 bg-emerald-50 rounded-xl">
-              <p className="text-2xl font-black text-emerald-600">
-                {s.allTasks.tasks.filter((t: any) => t.status === 'completed').length}
-              </p>
-              <p className="text-xs text-slate-500">Completed</p>
-            </div>
-            <div className="text-center p-4 bg-red-50 rounded-xl">
-              <p className="text-2xl font-black text-red-600">
-                {s.allTasks.tasks.filter((t: any) => t.status === 'overdue').length}
-              </p>
-              <p className="text-xs text-slate-500">Overdue</p>
-            </div>
-            <div className="text-center p-4 bg-amber-50 rounded-xl">
-              <p className="text-2xl font-black text-amber-600">
-                {s.allTasks.tasks.filter((t: any) => t.status === 'pending').length}
-              </p>
-              <p className="text-xs text-slate-500">Pending</p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {s?.dashboard?.callStats?.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="font-extrabold text-slate-900 text-sm uppercase tracking-wide mb-4">Call Outcomes</h2>
-          <div className="space-y-2">
+        <div className="card-blueprint p-6 space-y-4">
+          <h2 className="text-sm font-bold text-[#0a0a0a]">Call Outcome Distribution</h2>
+          <div className="divide-y divide-[#e5e5e5]">
             {s.dashboard.callStats.map((stat: any) => (
-              <div key={stat._id} className="flex justify-between items-center border-b pb-2 text-sm">
-                <span className="capitalize font-medium">{stat._id}</span>
+              <div key={stat._id} className="py-3 flex justify-between items-center text-xs">
+                <span className="capitalize font-semibold text-[#0a0a0a]">{stat._id}</span>
                 <div className="flex items-center gap-4">
-                  <span className="font-bold">{stat.count}</span>
-                  <span className="text-xs text-slate-400">avg {stat.avgDuration?.toFixed(1)} min</span>
+                  <span className="font-bold text-[#0a0a0a]">{stat.count} calls</span>
+                  <span className="text-[#737373]">Avg {stat.avgDuration?.toFixed(1) || 0} min</span>
                 </div>
               </div>
             ))}

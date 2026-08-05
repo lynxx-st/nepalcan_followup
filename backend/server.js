@@ -19,6 +19,7 @@ const callLogRoutes = require('./modules/call-logs/routes/call-logs.routes');
 const commerceRoutes = require('./modules/commerce/routes/commerce.routes');
 const adminRoutes = require('./modules/admin/routes/admin.routes');
 const settingsRoutes = require('./modules/settings/routes/settings.routes');
+const attendanceRoutes = require('./modules/attendance/routes/attendance.routes');
 const { apiLimiter, authLimiter, internalLimiter } = require('./src/middleware/rateLimiter');
 
 const app = express();
@@ -39,6 +40,7 @@ if (config.nodeEnv !== 'test') {
 }
 
 app.use('/api/v1/auth', authLimiter, authRoutes);
+app.use('/api/v1/attendance', apiLimiter, attendanceRoutes);
 app.use('/api/v1/tasks', apiLimiter, taskRoutes);
 app.use('/api/v1/rules', apiLimiter, ruleRoutes);
 app.use('/api/v1/dashboard', apiLimiter, dashboardRoutes);

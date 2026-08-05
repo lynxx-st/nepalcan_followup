@@ -10,6 +10,9 @@ const FIELDS = [
   { key: 'vendorCallSlaMinutes', label: 'Vendor Call SLA (min)', desc: 'Vendor call task must be completed within this time. Past this = overdue.', type: 'number' },
   { key: 'cancelledRecoverySlaMinutes', label: 'Cancelled Recovery SLA (min)', desc: 'Recovery attempt for cancelled orders — SLA in minutes. Task turns critical past this.', type: 'number' },
   { key: 'reviewCallSlaMinutes', label: 'Review Call SLA (min)', desc: 'Review call for delivered orders — SLA in minutes (default 24h). Task overdue past this.', type: 'number' },
+  { key: 'reviewFollowupDelayHours', label: 'Review Follow-up Delay (Hours)', desc: 'After how many hours does the order come up in pending review calls after being delivered.', type: 'number' },
+  { key: 'returnCustomerResponseSlaMinutes', label: 'Return Customer Response SLA (min)', desc: 'SLA in minutes for contacting customer after return request is initiated.', type: 'number' },
+  { key: 'returnVendorResponseSlaMinutes', label: 'Return Vendor Response SLA (min)', desc: 'SLA in minutes for obtaining vendor response/approval for return.', type: 'number' },
   { key: 'escalationSlaMinutes', label: 'Escalation SLA (min)', desc: 'SLA in minutes for escalation tasks.', type: 'number' },
   { key: 'priorityAmountThreshold', label: 'Priority Amount Threshold (Rs)', desc: 'Orders with total amount above this Rs value get priority bumped one level (e.g. medium → high).', type: 'number' },
 ];

@@ -8,7 +8,13 @@ import NextCall from './pages/NextCall';
 import TaskQueues from './pages/TaskQueues';
 import Orders from './pages/Orders';
 import OrderDetail from './pages/OrderDetail';
+import OrderConfirmedUnprocessed from './pages/OrderConfirmedUnprocessed';
+import OrderShipped from './pages/OrderShipped';
+import OrderPendingReview from './pages/OrderPendingReview';
+import OrderCustomerResponse from './pages/OrderCustomerResponse';
+import OrderVendorResponse from './pages/OrderVendorResponse';
 import Reviews from './pages/Reviews';
+import Returns from './pages/Returns';
 import TaskDetail from './pages/TaskDetail';
 import Recovery from './pages/Recovery';
 import Rules from './pages/Rules';
@@ -29,7 +35,13 @@ function AppRoutes() {
       <Route path="/queues" element={<TaskQueues />} />
       <Route path="/orders" element={<Orders />} />
       <Route path="/orders/:commerceOrderId" element={<OrderDetail />} />
+      <Route path="/orders/:commerceOrderId/confirmed-unprocessed" element={<OrderConfirmedUnprocessed />} />
+      <Route path="/orders/:commerceOrderId/shipped" element={<OrderShipped />} />
+      <Route path="/orders/:commerceOrderId/pending-review" element={<OrderPendingReview />} />
+      <Route path="/orders/:commerceOrderId/customer-response" element={<OrderCustomerResponse />} />
+      <Route path="/orders/:commerceOrderId/vendor-response" element={<OrderVendorResponse />} />
       <Route path="/reviews" element={<Reviews />} />
+      <Route path="/returns" element={<Returns />} />
       <Route path="/tasks/:id" element={<TaskDetail />} />
       <Route path="/recovery" element={<Recovery />} />
       <Route path="/rules" element={<Rules />} />
@@ -47,9 +59,9 @@ export default function App() {
     <SimulatedTimeProvider>
       <Toaster position="top-right" richColors closeButton />
       <ErrorBoundary>
-          <div className="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
+          <div className="min-h-screen bg-[#f5f5f5] text-[#0a0a0a] font-sans antialiased">
             {token && <Navbar />}
-            <main className={token ? 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6' : ''}>
+            <main className={token ? 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6' : ''}>
               <AppRoutes />
             </main>
           </div>

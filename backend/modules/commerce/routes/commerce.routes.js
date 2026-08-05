@@ -18,6 +18,8 @@ router.get('/orders/:commerceOrderId/status', authenticate, commerceController.g
 router.get('/orders/:commerceOrderId/detail', authenticate, commerceController.getOrderDetail);
 router.put('/orders/:commerceOrderId/phone', authenticate, commerceController.updateOrderPhone);
 router.put('/orders/:commerceOrderId/status', authenticate, commerceController.updateOrderStatus);
-router.post('/orders/:commerceOrderId/notes', authenticate, commerceController.addOrderNote);
+router.get('/returns', authenticate, commerceController.getReturns);
+router.put('/returns/:returnId/status', authenticate, commerceController.updateReturnStatus);
+router.post('/sync/returns', authenticate, internalLimiter, commerceController.syncReturns);
 
 module.exports = router;

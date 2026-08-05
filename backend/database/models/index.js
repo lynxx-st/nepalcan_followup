@@ -343,7 +343,7 @@ const CommerceOrderSchema = new mongoose.Schema({
   // ── Workflow (Computed, Indexed) ──
   workflowStage: {
     type: String,
-    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'delivered_followup', 'done', 'rescheduled', 'other'],
+    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'done', 'rescheduled', 'customer_response', 'vendor_response', 'other'],
     default: 'other',
   },
   workflowPriority: {
@@ -462,6 +462,27 @@ const CommerceOrderSchema = new mongoose.Schema({
     metadata: mongoose.Schema.Types.Mixed,
   }],
 
+  // ── Logistics Timeline (from external API) ──
+  externalStatusHistory: [{
+    event: String,
+    status: String,
+    rawPayload: mongoose.Schema.Types.Mixed,
+    receivedAt: Date,
+  }],
+  externalLogisticsOrderId: String,
+
+  // ── Structured Review ──
+  review: {
+    text: String,
+    platformSatisfied: { type: String, enum: ['yes', 'no', 'other'] },
+    platformSatisfiedOther: String,
+    deliverySatisfied: { type: String, enum: ['yes', 'no', 'other'] },
+    deliverySatisfiedOther: String,
+    willUseAgain: { type: String, enum: ['yes', 'no', 'other'] },
+    willUseAgainOther: String,
+    submittedAt: Date,
+  },
+
   notes: [{
     actor: { type: String, enum: ['system', 'customer', 'vendor', 'admin', 'staff'] },
     actorName: String,
@@ -509,6 +530,10 @@ const AdminSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  isVerified: {
+    type: Boolean,
+    default: false,
+  },
   lastLoginAt: Date,
 }, {
   timestamps: true,
@@ -522,6 +547,9 @@ const defaultSettings = {
   vendorCallSlaMinutes: { value: 120, description: 'SLA in minutes for vendor call tasks' },
   cancelledRecoverySlaMinutes: { value: 15, description: 'SLA in minutes for cancelled recovery tasks' },
   reviewCallSlaMinutes: { value: 1440, description: 'SLA in minutes for review call tasks (24h)' },
+  reviewFollowupDelayHours: { value: 24, description: 'Hours after an order is Delivered before it appears in Pending Review calls' },
+  returnCustomerResponseSlaMinutes: { value: 60, description: 'SLA in minutes for return customer response tasks' },
+  returnVendorResponseSlaMinutes: { value: 120, description: 'SLA in minutes for return vendor response tasks' },
   escalationSlaMinutes: { value: 10, description: 'SLA in minutes for escalation tasks' },
   priorityAmountThreshold: { value: 1000, description: 'Orders above this Rs amount get priority bumped one level' },
 };
@@ -592,6 +620,67 @@ const disconnectDatabase = async () => {
   }
 };
 
+const UserAttendanceSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Admin',
+    required: true,
+    index: true,
+  },
+  userName: String,
+  userEmail: String,
+  checkInTime: {
+    type: Date,
+    default: Date.now,
+    required: true,
+  },
+  checkOutTime: Date,
+  status: {
+    type: String,
+    enum: ['checked-in', 'checked-out'],
+    default: 'checked-in',
+    index: true,
+  },
+  durationMinutes: {
+    type: Number,
+    default: 0,
+  },
+  notes: String,
+}, {
+  timestamps: true,
+  collection: 'user_attendance',
+});
+
+UserAttendanceSchema.index({ userId: 1, status: 1 });
+UserAttendanceSchema.index({ userId: 1, createdAt: -1 });
+
+const OrderReturnSchema = new mongoose.Schema({
+  externalReturnId: { type: String, unique: true },
+  commerceOrderId: String,
+  orderId: String,
+  order: mongoose.Schema.Types.Mixed,
+  vendor: mongoose.Schema.Types.Mixed,
+  customerProfile: mongoose.Schema.Types.Mixed,
+  customerPhone: String,
+  items: [mongoose.Schema.Types.Mixed],
+  returnReason: String,
+  type: String,
+  attachments: [mongoose.Schema.Types.Mixed],
+  status: String,
+  superAdminStatus: String,
+  rejectReason: String,
+  concernReason: String,
+  customerResponseStatus: { type: String, default: 'pending' },
+  vendorResponseStatus: { type: String, default: 'pending' },
+  workflowStage: { type: String, default: 'customer_response' },
+  isActive: { type: Boolean, default: true },
+  createdAt: Date,
+  updatedAt: Date,
+}, { timestamps: true, collection: 'order_returns' });
+
+OrderReturnSchema.index({ externalReturnId: 1 });
+OrderReturnSchema.index({ workflowStage: 1 });
+
 const Setting = mongoose.model('Setting', SettingSchema);
 
 const models = {
@@ -601,7 +690,9 @@ const models = {
   CallLog: mongoose.model('CallLog', CallLogSchema),
   RecoveryCampaign: mongoose.model('RecoveryCampaign', RecoveryCampaignSchema),
   CommerceOrder: mongoose.model('CommerceOrder', CommerceOrderSchema),
+  OrderReturn: mongoose.model('OrderReturn', OrderReturnSchema),
   Admin: mongoose.model('Admin', AdminSchema),
+  UserAttendance: mongoose.model('UserAttendance', UserAttendanceSchema),
   Setting,
 };
 
