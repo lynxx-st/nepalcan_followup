@@ -80,6 +80,7 @@ export const taskApi = {
   },
   getById: (id: string) => api.get(`/v1/tasks/${id}`),
   getNext: () => api.get('/v1/tasks/next'),
+  getNextAdvanced: (limit?: number) => api.get(`/v1/tasks/next-advanced${limit ? `?limit=${limit}` : ''}`),
   assign: (id: string, data: any) => api.put(`/v1/tasks/${id}/assign`, data),
   complete: (id: string, data: any) => api.put(`/v1/tasks/${id}/complete`, data),
   skip: (id: string, data: any) => api.put(`/v1/tasks/${id}/skip`, data),

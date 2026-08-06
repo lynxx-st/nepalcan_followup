@@ -10,7 +10,7 @@ import { entityName } from '../utils/order';
 import {
   PhoneCall, Store, Clock, RefreshCw, Star, AlertTriangle,
   Zap, ArrowRight, CheckCircle2, TrendingUp, Filter, X, Truck, Calendar,
-  UserCheck, ShieldCheck, DollarSign, Activity, Play, CheckSquare, Layers, Eye,
+  UserCheck, ShieldCheck, DollarSign, Activity, Play, CheckSquare, Eye,
 } from 'lucide-react';
 
 const STAGE_TABS = [

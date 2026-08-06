@@ -20,6 +20,7 @@ const commerceRoutes = require('./modules/commerce/routes/commerce.routes');
 const adminRoutes = require('./modules/admin/routes/admin.routes');
 const settingsRoutes = require('./modules/settings/routes/settings.routes');
 const attendanceRoutes = require('./modules/attendance/routes/attendance.routes');
+const analyticsRoutes = require('./modules/analytics/routes/analytics.routes');
 const { apiLimiter, authLimiter, internalLimiter } = require('./src/middleware/rateLimiter');
 
 const app = express();
@@ -49,6 +50,7 @@ app.use('/api/v1/call-logs', apiLimiter, callLogRoutes);
 app.use('/api/v1/commerce', commerceRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/settings', apiLimiter, settingsRoutes);
+app.use('/api/v1/analytics', apiLimiter, analyticsRoutes);
 app.use('/api/v1/internal/task-generator', internalLimiter, taskGeneratorRoutes);
 
 app.get('/health', (req, res) => {

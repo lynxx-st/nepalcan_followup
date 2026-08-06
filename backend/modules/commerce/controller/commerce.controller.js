@@ -9,6 +9,14 @@ const recoveryService = require('../../../modules/recovery/service/recovery.serv
 const externalLogisticsIdOf = (order) =>
   order.externalLogisticsOrderId || order.commerce?.externalLogisticsOrderId || order.commerce?.externalNonHeavyLogisticsId || null;
 
+// Return stage is derived from response statuses + follow-up order, so either
+// side can be contacted first and any step can be re-edited (history records it).
+function computeReturnStage(r) {
+  if (['accepted', 'rejected'].includes(r.vendorResponseStatus) || r.customerResponseStatus === 'rejected') return 'completed';
+  if (r.customerResponseStatus === 'confirmed') return 'vendor_response';
+  return r.followUpOrder === 'vendor_first' ? 'vendor_response' : 'customer_response';
+}
+
 function mergeNotes(localNotes = [], apiNotes = []) {
   const app = localNotes.map((n) => ({
     note: n.note,
@@ -729,30 +737,63 @@ async function getReturns(req, res) {
 async function updateReturnStatus(req, res) {
   try {
     const { returnId } = req.params;
-    const { customerResponseStatus, vendorResponseStatus } = req.body;
-    const update = {};
-    if (customerResponseStatus) {
-      update.customerResponseStatus = customerResponseStatus;
-      if (customerResponseStatus === 'confirmed') {
-        update.workflowStage = 'vendor_response';
-      } else if (customerResponseStatus === 'rejected') {
-        update.workflowStage = 'completed';
-      }
-    }
-    if (vendorResponseStatus) {
-      update.vendorResponseStatus = vendorResponseStatus;
-      if (['accepted', 'rejected'].includes(vendorResponseStatus)) {
-        update.workflowStage = 'completed';
-      }
-    }
+    const { customerResponseStatus, vendorResponseStatus, followUpOrder, note } = req.body;
 
-    const updated = await OrderReturn.findByIdAndUpdate(returnId, { $set: update }, { new: true });
-    if (!updated) {
+    const existing = await OrderReturn.findById(returnId);
+    if (!existing) {
       return res.status(404).json({ success: false, error: { message: 'Return not found' } });
     }
+
+    const update = {};
+    const history = [];
+    const actorName = req.user?.name || req.user?.email || 'staff';
+    const changedAt = new Date();
+    const push = (field, value) => {
+      if (value !== undefined && value !== null && value !== existing[field]) {
+        update[field] = value;
+        history.push({ field, from: existing[field] || null, to: value, actorName, note: note || null, changedAt });
+      }
+    };
+
+    push('customerResponseStatus', customerResponseStatus);
+    push('vendorResponseStatus', vendorResponseStatus);
+    push('followUpOrder', followUpOrder);
+
+    if (history.length === 0) {
+      return res.json({ success: true, data: existing });
+    }
+
+    update.workflowStage = computeReturnStage({ ...existing.toObject(), ...update });
+    const updated = await OrderReturn.findByIdAndUpdate(
+      returnId,
+      { $set: update, $push: { returnHistory: { $each: history } } },
+      { new: true }
+    );
     res.json({ success: true, data: updated });
   } catch (error) {
     res.status(500).json({ success: false, error: { message: error.message } });
+  }
+}
+
+async function getReturnAttachment(req, res) {
+  const { url } = req.query;
+  // ponytail: authenticated proxy for attachment images; any http(s) url.
+  // SSRF ceiling — restrict to allowlisted hosts if this ever exposes internal
+  // network paths to untrusted clients.
+  if (!url || !/^https?:\/\//.test(url)) {
+    return res.status(400).json({ success: false, error: { message: 'valid http(s) url required' } });
+  }
+  try {
+    const response = await axios.get(url, {
+      responseType: 'stream',
+      timeout: 15000,
+      headers: { 'User-Agent': 'nepalcan-followup' },
+    });
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+    response.data.pipe(res);
+  } catch (error) {
+    res.status(502).json({ success: false, error: { message: 'Failed to fetch attachment' } });
   }
 }
 
@@ -766,6 +807,7 @@ async function syncReturns(req, res) {
 }
 
 module.exports = {
+  computeReturnStage,
   login,
   syncOrders,
   syncExternalNonHeavy,
@@ -784,6 +826,7 @@ module.exports = {
   getExternalComments,
   postExternalComment,
   getReturns,
+  getReturnAttachment,
   updateReturnStatus,
   syncReturns,
 };

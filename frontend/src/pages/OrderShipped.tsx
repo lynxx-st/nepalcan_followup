@@ -152,13 +152,18 @@ export default function OrderShipped() {
   const customerPhone = order.customerPhone || order.customer?.phone || 'N/A';
   const vendorName = entityName(order.vendor?.name) || order.vendorName || 'Vendor';
   const vendorPhone = order.vendorPhone || order.vendor?.phone || 'N/A';
-  const items = order.items || order.commerce?.items || [];
-  const notes = order.notes || [];
-  const os = order.orderStatus || order.commerce?.orderStatus || 'Shipped';
-  const externalLogisticsId = order.externalLogisticsOrderId || order.externalNonHeavyLogisticsId;
-  const slaBreached = order.sla?.slaStatus === 'breached';
+   const items = order.items || order.commerce?.items || [];
+   const notes = order.notes || [];
+   const os = order.orderStatus || order.commerce?.orderStatus || 'Shipped';
+   const externalLogisticsId = order.externalLogisticsOrderId || order.externalNonHeavyLogisticsId;
+   const slaBreached = order.sla?.slaStatus === 'breached';
+   const logisticsPhone = order.logisticsPhone || '+977 01-5970736';
+   const timeToDelivery = order.timeToDeliveryMs;
+   const slaCreatedAt = order.sla?.slaCreatedAt;
+   const slaPickupAt = order.sla?.slaPickupAt;
+   const slaDeliveryDeadline = order.sla?.slaDeliveryDeadline;
 
-  const subtotal = items.reduce((s: number, i: any) => s + (i.quantity || 1) * (i.price || 0), 0);
+   const subtotal = items.reduce((s: number, i: any) => s + (i.quantity || 1) * (i.price || 0), 0);
   const deliveryCharge = order.deliveryChargeBreakdown?.customerDeliveryCharge || 0;
   const codFee = (order.paymentMethod === 'COD' || order.paymentMethod === 'Cash') ? 10 : 0;
   const computedTotal = subtotal + deliveryCharge + codFee;
@@ -182,9 +187,12 @@ export default function OrderShipped() {
               <h1 className="text-lg font-bold text-[#0a0a0a] tracking-tight">Order #{order.orderId || order.commerceOrderId}</h1>
               <span className="badge-pill bg-emerald-600 text-white text-[11px] font-semibold uppercase">Shipped</span>
             </div>
-            <p className="text-[12px] text-[#737373] mt-0.5 font-medium">
-              Created {new Date(order.createdAt || Date.now()).toLocaleDateString()} · Payment: <span className="font-semibold text-[#0a0a0a]">{order.paymentMethod || 'COD'} ({order.paymentStatus || 'Pending'})</span>
-            </p>
+               <p className="text-[12px] text-[#737373] mt-0.5 font-medium">
+                 Created {new Date(order.createdAt || Date.now()).toLocaleDateString()} · Payment: <span className="font-semibold text-[#0a0a0a]">{order.paymentMethod || 'COD'} ({order.paymentStatus || 'Pending'})</span>
+                 {timeToDelivery != null && (
+                   <span className="ml-2 text-[#dc3545] font-semibold">Delivered in {Math.floor(timeToDelivery / 86400000)}d {Math.floor((timeToDelivery % 86400000) / 3600000)}h</span>
+                 )}
+               </p>
           </div>
         </div>
 
@@ -272,13 +280,19 @@ export default function OrderShipped() {
             <span className="badge-pill bg-purple-600 text-white font-medium text-[10px]">In Transit</span>
           </div>
 
-          {/* External Logistics Order ID */}
+           {/* External Logistics Order ID */}
           {externalLogisticsId && (
             <div className="bg-[#fafafa] border border-[#e5e5e5] rounded-2xl p-3 flex items-center justify-between">
               <span className="text-[10px] text-[#737373] uppercase font-bold">External Logistics Order ID</span>
               <span className="text-xs font-bold text-[#0a0a0a] font-mono">{externalLogisticsId}</span>
             </div>
           )}
+
+          {/* Logistics Phone */}
+          <div className="bg-[#fafafa] border border-[#e5e5e5] rounded-2xl p-3 flex items-center justify-between">
+            <span className="text-[10px] text-[#737373] uppercase font-bold">Logistics Phone</span>
+            <a href={`tel:${logisticsPhone}`} className="text-xs font-bold text-[#dc3545] hover:underline font-mono">{logisticsPhone}</a>
+          </div>
 
           {/* Logistics Timeline */}
           <LogisticsTimeline

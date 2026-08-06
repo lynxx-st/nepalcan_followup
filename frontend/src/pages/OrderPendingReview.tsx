@@ -133,6 +133,7 @@ export default function OrderPendingReview() {
   const items = order.items || order.commerce?.items || [];
   const notes = order.notes || [];
   const os = order.orderStatus || order.commerce?.orderStatus || 'Delivered';
+  const timeToDelivery = order.timeToDeliveryMs;
   const externalLogisticsId = order.externalLogisticsOrderId || order.externalNonHeavyLogisticsId;
 
   const reviewObj = typeof order.review === 'object' && order.review ? order.review : { text: order.review || '' };
@@ -161,9 +162,12 @@ export default function OrderPendingReview() {
               <h1 className="text-lg font-bold text-[#0a0a0a] tracking-tight">Order #{order.orderId || order.commerceOrderId}</h1>
               <span className="badge-pill bg-emerald-600 text-white text-[11px] font-semibold uppercase">Delivered</span>
             </div>
-            <p className="text-[12px] text-[#737373] mt-0.5 font-medium">
-              Created {new Date(order.createdAt || Date.now()).toLocaleDateString()} · Payment: <span className="font-semibold text-[#0a0a0a]">{order.paymentMethod || 'COD'} ({order.paymentStatus || 'Pending'})</span>
-            </p>
+<p className="text-[12px] text-[#737373] mt-0.5 font-medium">
+               Created {new Date(order.createdAt || Date.now()).toLocaleDateString()} · Payment: <span className="font-semibold text-[#0a0a0a]">{order.paymentMethod || 'COD'} ({order.paymentStatus || 'Pending'})</span>
+               {timeToDelivery != null && (
+                 <span className="ml-2 text-[#dc3545] font-semibold">Delivered in {Math.floor(timeToDelivery / 86400000)}d {Math.floor((timeToDelivery % 86400000) / 3600000)}h</span>
+               )}
+             </p>
           </div>
         </div>
 

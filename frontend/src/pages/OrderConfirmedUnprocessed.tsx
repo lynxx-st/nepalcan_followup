@@ -9,6 +9,7 @@ import {
   PhoneCall, CheckCircle2, XCircle, Clock, Calendar, AlertTriangle,
   PhoneOff, User, Store, PackageCheck, ArrowLeft,
   X, Edit2, FileText, Send, ShoppingBag, MapPin, Package, RefreshCw,
+  Info, MessageSquare,
 } from 'lucide-react';
 
 const callPhone = (phone: string) => { window.location.href = `tel:${phone}`; };
@@ -16,6 +17,7 @@ const callPhone = (phone: string) => { window.location.href = `tel:${phone}`; };
 const vendorOutcomes = [
   { label: 'Vendor Accepted', color: 'btn-primary', value: 'accepted', icon: CheckCircle2 },
   { label: 'Vendor Delayed', color: 'btn-outline text-amber-700 hover:bg-amber-50', value: 'delayed', icon: Clock },
+  { label: 'Vendor Rescheduled', color: 'btn-outline text-rose-700 hover:bg-rose-50', value: 'rescheduled', icon: RotateCcw },
   { label: 'Schedule Dispatch', color: 'btn-outline', value: 'schedule_dispatch', icon: Calendar },
   { label: 'No Answer', color: 'btn-secondary', value: 'no_answer', icon: PhoneOff },
   { label: 'Call Later', color: 'btn-outline', value: 'call_later', icon: PhoneCall },
@@ -38,6 +40,9 @@ export default function OrderConfirmedUnprocessed() {
 
   const [showVendorDatePicker, setShowVendorDatePicker] = useState(false);
   const [vendorScheduleDate, setVendorScheduleDate] = useState('');
+
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [statusNote, setStatusNote] = useState('');
 
   const fetchDetail = async () => {
     try {
@@ -78,15 +83,10 @@ export default function OrderConfirmedUnprocessed() {
     }
   };
 
-  const handleVendorOutcome = async (value: string) => {
+   const handleVendorOutcome = async (value: string) => {
     if (value === 'accepted') {
-      setVendorStatus('accepted');
-      await updateStatus({ vendorStatus: 'accepted', note: 'Vendor accepted order' });
-      toast.success('Vendor Accepted!');
+      await handleVendorAccepted();
     } else if (value === 'delayed') {
-      setVendorStatus('delayed');
-      await updateStatus({ vendorStatus: 'delayed', note: 'Vendor reported dispatch delay' });
-    } else if (value === 'schedule_dispatch') {
       setShowVendorDatePicker(true);
     } else {
       setVendorStatus(value);
@@ -179,6 +179,7 @@ export default function OrderConfirmedUnprocessed() {
   const computedTotal = subtotal + deliveryCharge + codFee;
 
   const isVendorAccepted = vs === 'accepted';
+  const timeToDelivery = order.timeToDeliveryMs;
 
   return (
     <div className="space-y-4 pb-20 animate-in">
@@ -208,6 +209,9 @@ export default function OrderConfirmedUnprocessed() {
             </div>
             <p className="text-[12px] text-[#737373] mt-0.5 font-medium">
               Created {new Date(order.createdAt || Date.now()).toLocaleDateString()} · Payment: <span className="font-semibold text-[#0a0a0a]">{order.paymentMethod || 'COD'} ({order.paymentStatus || 'Pending'})</span>
+              {timeToDelivery != null && (
+                <span className="ml-2 text-[#dc3545] font-semibold">Delivered in {Math.floor(timeToDelivery / 86400000)}d {Math.floor((timeToDelivery % 86400000) / 3600000)}h</span>
+              )}
             </p>
           </div>
         </div>
@@ -341,14 +345,61 @@ export default function OrderConfirmedUnprocessed() {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-between text-xs text-emerald-900">
-                <span className="text-[11px]">Vendor has accepted the order. Order is ready for processing.</span>
-                <button onClick={() => setVendorStatus('unassigned')} className="text-[10px] font-bold underline text-emerald-700 cursor-pointer">Re-open</button>
+              <div className="space-y-2">
+                <p className="text-[11px] text-[#737373]">Log vendor response after call:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {vendorOutcomes.map((out) => {
+                    const Icon = out.icon;
+                    return (
+                      <button
+                        key={out.value}
+                        onClick={() => handleVendorOutcome(out.value)}
+                        disabled={saving}
+                        className={`${out.color} text-xs font-medium px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1`}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span>{out.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
 
-          {/* Logistics Timeline (visible for shipped orders) */}
+          {/* Status Recording Module (visible when vendor accepted) */}
+          {isVendorAccepted && (
+            <div className="pt-3 border-t border-[#e5e5e5]">
+              <h3 className="text-xs font-bold text-[#737373] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5" />
+                Status Recording
+              </h3>
+              <div className="bg-[#fafafa] border border-[#e5e5e5] rounded-2xl p-3 space-y-2 text-xs">
+                <p className="text-[#0a0a0a] font-medium">Why is this order still unprocessed after vendor accepted?</p>
+                <textarea
+                  value={statusNote}
+                  onChange={(e) => setStatusNote(e.target.value)}
+                  placeholder="Enter reason for delay (e.g., waiting for stock, pending dispatch schedule)..."
+                  rows={2}
+                  className="input-blueprint w-full text-xs resize-none"
+                />
+                <button
+                  onClick={async () => {
+                    if (!statusNote.trim()) return;
+                    await updateStatus({ note: statusNote });
+                    toast.success('Status recorded');
+                    setStatusNote('');
+                    setShowStatusModal(false);
+                  }}
+                  disabled={saving || !statusNote.trim()}
+                  className="btn-primary text-xs px-4 py-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Save Status</span>
+                </button>
+              </div>
+            </div>
+          )}
           {order.externalStatusHistory && order.externalStatusHistory.length > 0 && (
             <div className="pt-3 border-t border-[#e5e5e5]">
               <h3 className="text-xs font-bold text-[#737373] uppercase tracking-wider mb-2">Logistics Timeline</h3>

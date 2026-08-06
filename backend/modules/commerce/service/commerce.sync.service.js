@@ -33,6 +33,20 @@ function deliveryMark(existing, status, createdAnchor, now = new Date()) {
   };
 }
 
+// Return attachments come in as strings or loose objects; normalize to
+// {url, name, type} and mark zoomable so the frontend lightbox can render them.
+function normalizeAttachment(a) {
+  if (!a) return null;
+  if (typeof a === 'string') a = { url: a };
+  const url = a.url || a.imageUrl || a.src || '';
+  return {
+    url,
+    name: a.name || a.filename || '',
+    type: a.type || (url.match(/\.(\w{2,5})(\?|$)/) || [])[1]?.toLowerCase() || '',
+    zoomable: true,
+  };
+}
+
 class CommerceSyncService {
   constructor() {
     this.baseUrl = COMMERCE_BASE;
@@ -1133,7 +1147,7 @@ class CommerceSyncService {
           items: item.items || [],
           returnReason: item.returnReason || '',
           type: item.type || 'Return',
-          attachments: item.attachments || [],
+          attachments: (item.attachments || []).map(normalizeAttachment).filter(Boolean),
           status: item.status || 'Initiated',
           superAdminStatus: item.superAdminStatus || 'None',
           rejectReason: item.rejectReason || null,
@@ -1162,4 +1176,4 @@ class CommerceSyncService {
 
 const commerceSync = new CommerceSyncService();
 
-module.exports = { commerceSync, CommerceSyncService, normalizeExternalComments, deliveryMark };
+module.exports = { commerceSync, CommerceSyncService, normalizeExternalComments, deliveryMark, normalizeAttachment };

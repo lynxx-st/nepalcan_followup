@@ -21,6 +21,7 @@ router.post('/orders/:commerceOrderId/comment', authenticate, commerceController
 router.put('/orders/:commerceOrderId/phone', authenticate, commerceController.updateOrderPhone);
 router.put('/orders/:commerceOrderId/status', authenticate, commerceController.updateOrderStatus);
 router.get('/returns', authenticate, commerceController.getReturns);
+router.get('/returns/attachment', authenticate, commerceController.getReturnAttachment);
 router.put('/returns/:returnId/status', authenticate, commerceController.updateReturnStatus);
 router.post('/sync/returns', authenticate, internalLimiter, commerceController.syncReturns);
 

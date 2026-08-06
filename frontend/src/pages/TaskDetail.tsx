@@ -65,8 +65,8 @@ export default function TaskDetail() {
     return (
       <div className="card-blueprint p-8 text-center space-y-4 max-w-lg mx-auto">
         <h2 className="text-base font-bold text-[#0a0a0a]">{error || 'Task Not Found'}</h2>
-        <button onClick={() => navigate('/queues')} className="btn-primary text-xs">
-          Return to Task Queues
+        <button onClick={() => navigate('/today')} className="btn-primary text-xs">
+          Return to Today's Work
         </button>
       </div>
     );
@@ -75,7 +75,7 @@ export default function TaskDetail() {
   return (
     <div className="space-y-6 pb-16 animate-in">
       <Breadcrumbs items={[
-        { label: 'Task Queues', to: '/queues' },
+        { label: "Today's Work", to: '/today' },
         { label: `Task #${task.taskNumber || task._id.substring(0, 8)}` }
       ]} />
 
@@ -83,7 +83,7 @@ export default function TaskDetail() {
       <div className="card-blueprint p-6 space-y-4">
         <div className="flex items-center justify-between border-b border-[#e5e5e5] pb-4">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/queues')} className="p-2 rounded-2xl bg-[#fafafa] border border-[#e5e5e5] hover:bg-[#e5e5e5] cursor-pointer">
+            <button onClick={() => navigate('/today')} className="p-2 rounded-2xl bg-[#fafafa] border border-[#e5e5e5] hover:bg-[#e5e5e5] cursor-pointer">
               <ArrowLeft className="w-4 h-4 text-[#0a0a0a]" />
             </button>
             <div>

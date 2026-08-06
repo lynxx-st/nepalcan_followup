@@ -7,7 +7,7 @@ import Breadcrumbs from '../components/Breadcrumbs';
 import {
   PhoneCall, CheckCircle2, XCircle, ArrowLeft,
   X, Edit2, FileText, Send, ShoppingBag, Package,
-  RotateCcw, ImageIcon, Store,
+  RotateCcw, ImageIcon, Store, Clock,
 } from 'lucide-react';
 
 const callPhone = (phone: string) => { window.location.href = `tel:${phone}`; };
@@ -118,6 +118,7 @@ export default function OrderVendorResponse() {
   const returnReason = order.returnReason || 'No reason provided';
   const attachments = order.attachments || [];
   const orderInfo = order.order || {};
+  const timeToDelivery = order.timeToDeliveryMs;
 
   return (
     <div className="space-y-4 pb-20 animate-in">
@@ -142,6 +143,9 @@ export default function OrderVendorResponse() {
             </div>
             <p className="text-[12px] text-[#737373] mt-0.5 font-medium">
               Step 2 of 2 — Obtain vendor approval & dispatch
+              {timeToDelivery != null && (
+                <span className="ml-2 text-[#dc3545] font-semibold">Delivered in {Math.floor(timeToDelivery / 86400000)}d {Math.floor((timeToDelivery % 86400000) / 3600000)}h</span>
+              )}
             </p>
           </div>
         </div>

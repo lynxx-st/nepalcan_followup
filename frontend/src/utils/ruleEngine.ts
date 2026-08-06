@@ -38,40 +38,47 @@ export function getSLAInfo(dueAtIso: string, nowIso: string = new Date().toISOSt
   };
 }
 
-export const QUEUE_CONFIG: Record<TaskQueue, { label: string; color: string; badgeBg: string }> = {
+export const QUEUE_CONFIG: Record<TaskQueue, { label: string; color: string; badgeBg: string; hidden: boolean }> = {
   'customer-confirmation': {
     label: 'Customer Confirmation',
     color: 'text-blue-600',
     badgeBg: 'bg-blue-100 text-blue-800 border-blue-200',
+    hidden: false,
   },
   'vendor-call': {
     label: 'Vendor Action',
     color: 'text-purple-600',
     badgeBg: 'bg-purple-100 text-purple-800 border-purple-200',
+    hidden: false,
   },
   'vendor-delay': {
     label: 'Vendor Delay',
     color: 'text-amber-600',
     badgeBg: 'bg-amber-100 text-amber-800 border-amber-200',
+    hidden: false,
   },
   'cancelled-recovery': {
     label: 'Cancelled Recovery',
     color: 'text-rose-600',
     badgeBg: 'bg-rose-100 text-rose-800 border-rose-200',
+    hidden: false,
   },
   'review-call': {
     label: 'Review Calls',
     color: 'text-yellow-600',
     badgeBg: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    hidden: false,
   },
   'escalation': {
     label: 'Escalations',
     color: 'text-red-600',
     badgeBg: 'bg-red-100 text-red-800 border-red-200',
+    hidden: false,
   },
   'logistics-followup': {
     label: 'Logistics Follow-up',
     color: 'text-teal-600',
     badgeBg: 'bg-teal-100 text-teal-800 border-teal-200',
+    hidden: false,
   },
 };

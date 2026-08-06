@@ -3,9 +3,9 @@ import { Toaster } from 'sonner';
 import { SimulatedTimeProvider } from './hooks/useSimulatedTime';
 import ErrorBoundary from './components/ErrorBoundary';
 import Navbar from './components/Navbar';
+import BottomNav from './components/BottomNav';
 import TodayWork from './pages/TodayWork';
 import NextCall from './pages/NextCall';
-import TaskQueues from './pages/TaskQueues';
 import Orders from './pages/Orders';
 import OrderDetail from './pages/OrderDetail';
 import OrderConfirmedUnprocessed from './pages/OrderConfirmedUnprocessed';
@@ -32,7 +32,6 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/today" element={<TodayWork />} />
       <Route path="/next" element={<NextCall />} />
-      <Route path="/queues" element={<TaskQueues />} />
       <Route path="/orders" element={<Orders />} />
       <Route path="/orders/:commerceOrderId" element={<OrderDetail />} />
       <Route path="/orders/:commerceOrderId/confirmed-unprocessed" element={<OrderConfirmedUnprocessed />} />
@@ -61,9 +60,10 @@ export default function App() {
       <ErrorBoundary>
           <div className="min-h-screen bg-[#f5f5f5] text-[#0a0a0a] font-sans antialiased">
             {token && <Navbar />}
-            <main className={token ? 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6' : ''}>
+            <main className={token ? 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-6' : ''}>
               <AppRoutes />
             </main>
+            {token && <BottomNav />}
           </div>
         </ErrorBoundary>
       </SimulatedTimeProvider>

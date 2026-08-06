@@ -216,6 +216,10 @@ const TaskRuleSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+
+  // ── Assignment (Phase 9: multi-user task division) ──
+  assigneeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+  team: { type: String },
 }, {
   timestamps: true,
   collection: 'task_rules',
@@ -749,6 +753,15 @@ const OrderReturnSchema = new mongoose.Schema({
   customerResponseStatus: { type: String, default: 'pending' },
   vendorResponseStatus: { type: String, default: 'pending' },
   workflowStage: { type: String, default: 'customer_response' },
+  followUpOrder: { type: String, enum: ['customer_first', 'vendor_first'], default: 'customer_first' },
+  returnHistory: [{
+    field: String,
+    from: String,
+    to: String,
+    actorName: String,
+    note: String,
+    changedAt: { type: Date, default: Date.now },
+  }],
   isActive: { type: Boolean, default: true },
   createdAt: Date,
   updatedAt: Date,

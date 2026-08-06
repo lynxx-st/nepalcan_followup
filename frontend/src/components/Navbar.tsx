@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  CheckSquare, Zap, Layers, Sliders, RotateCcw, ShoppingBag, BarChart3,
+  CheckSquare, Zap, Sliders, RotateCcw, ShoppingBag, BarChart3,
   Clock, PlusCircle, Search, Menu, X, LogOut, Bell, Settings, RefreshCw, Users, Star,
   LogIn, UserCheck, Play, Square,
 } from 'lucide-react';
@@ -13,7 +13,6 @@ import { toast } from 'sonner';
 const NAV_LINKS = [
   { to: '/today', label: "Today's Work", icon: CheckSquare },
   { to: '/next', label: 'Next Call', icon: Zap },
-  { to: '/queues', label: 'Task Queues', icon: Layers },
   { to: '/orders', label: 'Orders', icon: ShoppingBag },
   { to: '/returns', label: 'Returns', icon: RotateCcw },
   { to: '/reviews', label: 'Reviews', icon: Star },
@@ -278,8 +277,8 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Pill Navigation Bar */}
-      <nav className="bg-[#fafafa] border-t border-[#e5e5e5] px-4 sm:px-6 lg:px-8 overflow-x-auto">
+      {/* Pill Navigation Bar (desktop ≥640px; mobile uses BottomNav) */}
+      <nav className="hidden md:block bg-[#fafafa] border-t border-[#e5e5e5] px-4 sm:px-6 lg:px-8 overflow-x-auto">
         <div className="max-w-7xl mx-auto flex space-x-1.5 py-2">
           {links.map((link) => {
             const Icon = link.icon;
