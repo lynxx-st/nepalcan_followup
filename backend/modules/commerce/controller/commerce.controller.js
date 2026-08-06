@@ -1,10 +1,13 @@
 const axios = require('axios');
 const commerceAuth = require('../service/commerce.auth.service');
-const { commerceSync } = require('../service/commerce.sync.service');
+const { commerceSync, deliveryMark } = require('../service/commerce.sync.service');
 const { CommerceOrder, Task, OrderReturn } = require('../../../database/models');
 const config = require('../../../config');
 const { decodeBase64 } = require('../../../utils/decode');
 const recoveryService = require('../../../modules/recovery/service/recovery.service');
+
+const externalLogisticsIdOf = (order) =>
+  order.externalLogisticsOrderId || order.commerce?.externalLogisticsOrderId || order.commerce?.externalNonHeavyLogisticsId || null;
 
 function mergeNotes(localNotes = [], apiNotes = []) {
   const app = localNotes.map((n) => ({
@@ -340,10 +343,12 @@ async function getOrderDetail(req, res) {
         externalLogisticsOrderId: existing.externalLogisticsOrderId || existing.commerce?.externalLogisticsOrderId,
         externalStatusHistory: existing.externalStatusHistory || [],
         pickupTicketId: existing.commerce?.pickupTicketId,
+        sla: existing.sla || null,
+        deliveredAt: existing.deliveredAt || null,
+        timeToDeliveryMs: existing.timeToDeliveryMs || null,
         activeTaskId: activeTask?._id || null,
       };
-      return res.json({ success: true, data: cached, cached: true });
-    }
+      return res.json({ success: true, data: cached, cached: true });    }
 
     // Uncached path: fetch from API, decode, store, return decoded
     let richData = null;
@@ -406,6 +411,9 @@ async function getOrderDetail(req, res) {
         externalLogisticsOrderId: existing?.externalLogisticsOrderId || existing?.commerce?.externalLogisticsOrderId,
         externalStatusHistory: existing?.externalStatusHistory || [],
         pickupTicketId: existing?.commerce?.pickupTicketId || null,
+        sla: existing?.sla || null,
+        deliveredAt: existing?.deliveredAt || null,
+        timeToDeliveryMs: existing?.timeToDeliveryMs || null,
         activeTaskId: activeTask?._id || null,
       };
       return res.json({ success: true, data: decodedResponse, cached: false });
@@ -498,6 +506,12 @@ async function updateOrderStatus(req, res) {
     if (orderStatus) update['commerce.orderStatus'] = orderStatus;
     if (review !== undefined) update['review'] = review;
 
+    const dm = deliveryMark(existing, orderStatus, existing.externalCreatedAt || existing.sla?.slaCreatedAt || existing.createdAt);
+    if (dm) {
+      update.deliveredAt = dm.deliveredAt;
+      update.timeToDeliveryMs = dm.timeToDeliveryMs;
+    }
+
     const historyEntry = {
       comment: note || `Status updated`,
       actorName: req.user?.name || req.user?.email || 'staff',
@@ -561,6 +575,49 @@ async function updateOrderStatus(req, res) {
       success: false,
       error: { message: error.message },
     });
+  }
+}
+
+async function getExternalComments(req, res) {
+  try {
+    const { commerceOrderId } = req.params;
+    const order = await CommerceOrder.findOne({ commerceOrderId }).lean();
+    if (!order) {
+      return res.status(404).json({ success: false, error: { message: 'Order not found' } });
+    }
+    const externalId = externalLogisticsIdOf(order);
+    if (!externalId) {
+      return res.json({ success: true, data: { comments: [] } });
+    }
+    const comments = await commerceSync.fetchExternalComments(externalId);
+    res.json({ success: true, data: { comments } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: error.message } });
+  }
+}
+
+async function postExternalComment(req, res) {
+  try {
+    const { commerceOrderId } = req.params;
+    const { comments } = req.body;
+    if (!comments || !String(comments).trim()) {
+      return res.status(400).json({ success: false, error: { message: 'comments is required' } });
+    }
+    const order = await CommerceOrder.findOne({ commerceOrderId }).lean();
+    if (!order) {
+      return res.status(404).json({ success: false, error: { message: 'Order not found' } });
+    }
+    const externalId = externalLogisticsIdOf(order);
+    if (!externalId) {
+      return res.status(400).json({ success: false, error: { message: 'No external logistics order id on this order' } });
+    }
+    const result = await commerceSync.postExternalComment(externalId, String(comments).trim());
+    res.json({ success: true, data: result });
+  } catch (error) {
+    if (error.response && [400, 401, 404].includes(error.response.status)) {
+      return res.status(error.response.status).json({ success: false, error: error.response.data || { message: error.message } });
+    }
+    res.status(500).json({ success: false, error: { message: error.message } });
   }
 }
 
@@ -718,6 +775,8 @@ module.exports = {
   updateOrderPhone,
   updateOrderStatus,
   addOrderNote,
+  getExternalComments,
+  postExternalComment,
   getReturns,
   updateReturnStatus,
   syncReturns,

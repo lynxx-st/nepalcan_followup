@@ -8,7 +8,7 @@ import LogisticsTimeline from '../components/LogisticsTimeline';
 import {
   PhoneCall, CheckCircle2, XCircle, Clock, Calendar, AlertTriangle,
   PhoneOff, User, Store, PackageCheck, ArrowLeft,
-  X, Edit2, FileText, Send, ShoppingBag, MapPin, Package, RefreshCw, Truck,
+  X, Edit2, FileText, Send, ShoppingBag, MapPin, Package, RefreshCw, Truck, MessageSquare,
 } from 'lucide-react';
 
 const callPhone = (phone: string) => { window.location.href = `tel:${phone}`; };
@@ -22,6 +22,11 @@ export default function OrderShipped() {
 
   const [noteText, setNoteText] = useState('');
   const [noteSaving, setNoteSaving] = useState(false);
+
+  const [externalComments, setExternalComments] = useState<any[]>([]);
+  const [externalCommentText, setExternalCommentText] = useState('');
+  const [externalCommentsLoading, setExternalCommentsLoading] = useState(false);
+  const [externalCommentSaving, setExternalCommentSaving] = useState(false);
 
   const [showPhoneEdit, setShowPhoneEdit] = useState(false);
   const [newPhone, setNewPhone] = useState('');
@@ -61,6 +66,39 @@ export default function OrderShipped() {
       toast.error('Failed to save status');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const fetchExternalComments = async () => {
+    if (!commerceOrderId) return;
+    try {
+      setExternalCommentsLoading(true);
+      const res: any = await commerceApi.getExternalComments(commerceOrderId);
+      setExternalComments(res?.data?.comments || []);
+    } catch (err) {
+      console.error('Failed to load external comments', err);
+    } finally {
+      setExternalCommentsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (commerceOrderId) fetchExternalComments();
+  }, [commerceOrderId]);
+
+  const handlePostExternalComment = async () => {
+    if (!externalCommentText.trim() || !commerceOrderId) return;
+    try {
+      setExternalCommentSaving(true);
+      await commerceApi.postExternalComment(commerceOrderId, externalCommentText.trim());
+      setExternalCommentText('');
+      toast.success('Comment posted to NCM');
+      fetchExternalComments();
+    } catch (err: any) {
+      console.error('Failed to post external comment', err);
+      toast.error(err?.response?.data?.error?.message || 'Failed to post comment');
+    } finally {
+      setExternalCommentSaving(false);
     }
   };
 
@@ -118,6 +156,7 @@ export default function OrderShipped() {
   const notes = order.notes || [];
   const os = order.orderStatus || order.commerce?.orderStatus || 'Shipped';
   const externalLogisticsId = order.externalLogisticsOrderId || order.externalNonHeavyLogisticsId;
+  const slaBreached = order.sla?.slaStatus === 'breached';
 
   const subtotal = items.reduce((s: number, i: any) => s + (i.quantity || 1) * (i.price || 0), 0);
   const deliveryCharge = order.deliveryChargeBreakdown?.customerDeliveryCharge || 0;
@@ -267,6 +306,61 @@ export default function OrderShipped() {
           </div>
         </div>
       </div>
+
+      {/* External NCM Comments Section */}
+      {externalLogisticsId && (
+        <div className="card-blueprint p-4 space-y-3 bg-[#ffffff]">
+          <h3 className="text-xs font-bold text-[#0a0a0a] flex items-center gap-2 uppercase tracking-wider border-b border-[#e5e5e5] pb-2">
+            <MessageSquare className="w-3.5 h-3.5 text-purple-600" />
+            External Comments (NCM)
+          </h3>
+
+          {slaBreached && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-start gap-2 text-[11px] text-amber-800">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">SLA crossed for this order</p>
+                <p className="mt-0.5">Leave a note below to post a comment on the logistics order via NCM.</p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5 max-h-52 overflow-y-auto">
+            {externalCommentsLoading ? (
+              <p className="text-xs text-[#737373] py-2 animate-pulse">Loading comments...</p>
+            ) : externalComments.length === 0 ? (
+              <p className="text-xs text-[#737373] py-2">No external comments yet.</p>
+            ) : (
+              externalComments.map((c: any, idx: number) => (
+                <div key={idx} className="bg-[#fafafa] border border-[#e5e5e5] p-2.5 rounded-xl text-xs space-y-0.5">
+                  <p className="text-[#0a0a0a] font-medium">{c.note || c.comment}</p>
+                  <p className="text-[10px] text-[#737373]">{c.actor || 'NCM'} · {new Date(c.createdAt || c.added_time || Date.now()).toLocaleString()}</p>
+                </div>
+              ))
+            )}
+          </div>
+
+          {slaBreached && (
+            <div className="flex gap-2 pt-1">
+              <textarea
+                value={externalCommentText}
+                onChange={(e) => setExternalCommentText(e.target.value)}
+                placeholder="Type comment to post on NCM logistics order..."
+                rows={2}
+                className="input-blueprint flex-1 text-xs resize-none"
+              />
+              <button
+                onClick={handlePostExternalComment}
+                disabled={externalCommentSaving || !externalCommentText.trim()}
+                className="btn-primary text-xs px-4 py-1.5 cursor-pointer disabled:opacity-50 min-h-[36px] self-end"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>{externalCommentSaving ? 'Posting...' : 'Post to NCM'}</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Notes Section */}
       <div className="card-blueprint p-4 space-y-3 bg-[#ffffff]">

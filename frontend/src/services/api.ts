@@ -153,6 +153,11 @@ export const commerceApi = {
     invalidateCache('getDetail');
     return api.put(`/v1/commerce/orders/${id}/status`, data);
   },
+  getExternalComments: (id: string) => api.get(`/v1/commerce/orders/${id}/comments`),
+  postExternalComment: (id: string, comments: string) => {
+    invalidateCache('getDetail');
+    return api.post(`/v1/commerce/orders/${id}/comment`, { comments });
+  },
   getReturns: (filters: Record<string, any> = {}) => api.get(`/v1/commerce/returns?${buildParams(filters)}`),
   updateReturnStatus: (returnId: string, data: Record<string, any>) => api.put(`/v1/commerce/returns/${returnId}/status`, data),
   syncReturns: () => api.post('/v1/commerce/sync/returns'),

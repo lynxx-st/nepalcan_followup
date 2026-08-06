@@ -53,6 +53,7 @@ class SLAScheduler {
     }
 
     await commerceSync.autoUpdateSlaBreachedOrders();
+    await commerceSync.updateSlaStatuses();
   }
 }
 

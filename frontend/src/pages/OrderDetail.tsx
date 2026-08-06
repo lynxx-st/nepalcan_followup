@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { commerceApi, noteApi, taskApi } from '../services/api';
-import { entityName } from '../utils/order';
+import { entityName, formatDuration } from '../utils/order';
 import Breadcrumbs from '../components/Breadcrumbs';
 import LogisticsTimeline from '../components/LogisticsTimeline';
 import ReviewModal from '../components/ReviewModal';
@@ -324,6 +324,11 @@ export default function OrderDetail() {
             <p className="text-[12px] text-[#737373] mt-0.5 font-medium">
               Created {new Date(order.createdAt || Date.now()).toLocaleDateString()} · Payment: <span className="font-semibold text-[#0a0a0a]">{order.paymentMethod || 'COD'} ({order.paymentStatus || 'Pending'})</span>
             </p>
+            {order.deliveredAt && (
+              <p className="text-[12px] text-[#737373] mt-0.5 font-medium">
+                Delivered {new Date(order.deliveredAt).toLocaleString()} · <span className="font-semibold text-emerald-700">Time to delivery: {formatDuration(order.timeToDeliveryMs)}</span>
+              </p>
+            )}
           </div>
         </div>
 

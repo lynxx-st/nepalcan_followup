@@ -26,6 +26,8 @@ const config = {
   authPassword: process.env.AUTH_PASSWORD || '',
   authApiUrl: process.env.AUTH_API_URL || 'https://commerce.thecanbrand.com/api/users/login',
   commerceApiBase: process.env.COMMERCE_API_BASE || 'https://commerce.thecanbrand.com/api/marketplace-orders',
+  ncmApiBase: process.env.NCM_API_BASE || 'https://demo.nepalcanmove.com',
+  ncmApiToken: process.env.NCM_API_TOKEN || '',
 };
 
 module.exports = config;

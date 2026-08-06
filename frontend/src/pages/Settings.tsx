@@ -61,6 +61,26 @@ export default function SettingsPage() {
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+        <div className="border-b border-slate-200 pb-4">
+          <h2 className="text-lg font-bold text-slate-900">Delivery Zones</h2>
+          <p className="text-xs text-slate-500 mt-1">Branch lists are fetched from the commerce API at setup (seed). SLA hours apply to shipped orders per zone.</p>
+        </div>
+        {(Array.isArray(values.deliveryZones) ? values.deliveryZones : []).map((zone) => (
+          <div key={zone.key} className="border border-slate-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-bold text-slate-900">{zone.label}</label>
+              <span className="text-xs text-slate-500">{Array.isArray(zone.branches) ? zone.branches.length : 0} branches</span>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 mb-1">Expected delivery SLA (hours)</p>
+              <input type="number" value={zone.slaHours ?? ''} onChange={(e) => setValues(v => ({ ...v, deliveryZones: (v.deliveryZones || []).map(z => z.key === zone.key ? { ...z, slaHours: Number(e.target.value) } : z) }))}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
         {FIELDS.map((field) => (
           <div key={field.key}>
             <label className="block text-sm font-bold text-slate-900 mb-1">{field.label}</label>

@@ -1,4 +1,43 @@
 const mongoose = require('mongoose');
+const axios = require('axios');
+const config = require('../../config');
+const logger = require('../../utils/logger');
+const commerceAuth = require('../../modules/commerce/service/commerce.auth.service');
+
+// Fetch branch lists per delivery-zone-group from the commerce API once, at
+// seed time. Snapshot design: mapping goes stale only if commerce changes
+// groups — re-seed (delete the settings row) to refresh.
+async function fetchDeliveryZoneGroups(seedValue) {
+  try {
+    const token = await commerceAuth.getToken();
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+    const base = String(config.commerceApiBase).replace(/\/marketplace-orders$/, '');
+    const groups = [];
+    let page = 1;
+    while (page <= 10) {
+      const response = await axios.get(`${base}/delivery-zone-group/list?active=true&page=${page}&limit=100`, { headers, timeout: 15000 });
+      const items = (response.data && response.data.data) || [];
+      if (items.length === 0) break;
+      groups.push(...items);
+      if (items.length < 100) break;
+      page++;
+    }
+    return (seedValue || []).map((tier) => {
+      const group = groups.find((g) => String(g._id) === String(tier.zoneGroupId));
+      if (!group) return tier;
+      const branches = [...new Set((group.branches || [])
+        .map((b) => String((b && b.name) || '').trim().toUpperCase())
+        .filter(Boolean))];
+      return { ...tier, branches };
+    });
+  } catch (err) {
+    logger.warn('Failed to fetch delivery zone groups at seed, seeding empty lists', { error: err.message });
+    return seedValue || [];
+  }
+}
 
 const TaskSchema = new mongoose.Schema({
   taskNumber: {
@@ -368,6 +407,22 @@ const CommerceOrderSchema = new mongoose.Schema({
   assignedAt: { type: Date },
   branch: { type: String },
   team: { type: String },
+  deliveryZone: { type: String, enum: ['same-city', 'major', 'third-tier', 'other'], default: 'other' },
+
+  // ── Delivery SLA (two windows: order creation, pickup collected) ──
+  sla: {
+    slaCreatedAt: { type: Date },
+    slaPickupAt: { type: Date },
+    deadlineA: { type: Date },
+    deadlineB: { type: Date },
+    slaDeliveryDeadline: { type: Date },
+    slaStatus: { type: String, enum: ['pending', 'ok', 'breached'], default: 'pending' },
+  },
+
+  // ── Delivery Time Tracking (created → delivered) ──
+  externalCreatedAt: { type: Date },
+  deliveredAt: { type: Date, index: true },
+  timeToDeliveryMs: { type: Number },
 
   // ── Customer ──
   customer: {
@@ -502,6 +557,7 @@ CommerceOrderSchema.index({ team: 1, workflowStage: 1 });
 CommerceOrderSchema.index({ workflowStage: 1, workflowUpdatedAt: 1 });
 CommerceOrderSchema.index({ 'commerce.orderStatus': 1, 'customer.confirmationStatus': 1, 'vendor.vendorStatus': 1 });
 CommerceOrderSchema.index({ 'customer.name': 1, 'customer.phone': 1 });
+CommerceOrderSchema.index({ 'sla.slaStatus': 1, 'sla.slaDeliveryDeadline': 1 });
 
 const AdminSchema = new mongoose.Schema({
   name: {
@@ -552,6 +608,14 @@ const defaultSettings = {
   returnVendorResponseSlaMinutes: { value: 120, description: 'SLA in minutes for return vendor response tasks' },
   escalationSlaMinutes: { value: 10, description: 'SLA in minutes for escalation tasks' },
   priorityAmountThreshold: { value: 1000, description: 'Orders above this Rs amount get priority bumped one level' },
+  deliveryZones: {
+    value: [
+      { key: 'same-city', label: 'Inside Valley / Same city', slaHours: 24, zoneGroupId: '69d72c4f74fde1d06b5a7a69', branches: [] },
+      { key: 'major', label: 'To Major Cities', slaHours: 48, zoneGroupId: '69d72c7c74fde1d06b5a7aab', branches: [] },
+      { key: 'third-tier', label: 'Except Major city', slaHours: 72, zoneGroupId: '69d7253174fde1d06b5a5970', branches: [] },
+    ],
+    description: 'Delivery zones: zoneGroupId maps each tier to a commerce delivery-zone-group; branches are refreshed from the commerce API on sync. destinationBranch name matched against each tier in order.',
+  },
 };
 
 const SettingSchema = new mongoose.Schema({
@@ -573,6 +637,15 @@ const SettingSchema = new mongoose.Schema({
 });
 
 async function seedSettings() {
+  const zoneDef = defaultSettings.deliveryZones;
+  if (zoneDef) {
+    const existing = await mongoose.model('Setting').findOne({ key: 'deliveryZones' });
+    const allEmpty = !existing || !Array.isArray(existing.value) ||
+      existing.value.every((t) => !Array.isArray(t.branches) || t.branches.length === 0);
+    if (allEmpty) {
+      zoneDef.value = await fetchDeliveryZoneGroups(zoneDef.value);
+    }
+  }
   for (const [key, def] of Object.entries(defaultSettings)) {
     await mongoose.model('Setting').findOneAndUpdate(
       { key },
