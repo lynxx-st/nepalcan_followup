@@ -5,7 +5,7 @@ import { commerceApi } from '../services/api';
 import Breadcrumbs from '../components/Breadcrumbs';
 import {
   RotateCcw, PhoneCall, Store, CheckCircle2, XCircle, Search,
-  Eye, Package, FileText, Image as ImageIcon
+  Eye, Package, FileText, Image as ImageIcon, Clock, ArrowLeft, X,
 } from 'lucide-react';
 
 const PAGE_SIZE = 10;
@@ -22,6 +22,7 @@ export default function Returns() {
     customer_response: 0,
     vendor_response: 0,
   });
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   const fetchReturns = async (p: number, stage: string, q: string) => {
     try {
@@ -198,6 +199,11 @@ export default function Returns() {
                       <p className="text-xs text-[#737373]">
                         Vendor: {vendor.name || 'N/A'}
                       </p>
+                      {ret.timeToDeliveryMs != null && (
+                        <p className="text-[10px] text-[#dc3545] font-semibold mt-0.5">
+                          Delivered in {Math.floor(ret.timeToDeliveryMs / 86400000)}d {Math.floor((ret.timeToDeliveryMs % 86400000) / 3600000)}h
+                        </p>
+                      )}
                     </div>
 
                     <div className="text-right">
@@ -222,19 +228,17 @@ export default function Returns() {
                           </p>
                           <div className="flex gap-2 flex-wrap">
                             {attachments.map((att: any, idx: number) => (
-                              <a
+                              <button
                                 key={idx}
-                                href={att.url}
-                                target="_blank"
-                                rel="noreferrer"
+                                onClick={() => setZoomedImage(att.url)}
                                 className="block group relative"
                               >
                                 <img
                                   src={att.url}
                                   alt={att.name || 'attachment'}
-                                  className="w-16 h-16 object-cover rounded-xl border border-[#e5e5e5] group-hover:opacity-80 transition-opacity"
+                                  className="w-16 h-16 object-cover rounded-xl border border-[#e5e5e5] group-hover:opacity-80 transition-opacity cursor-pointer"
                                 />
-                              </a>
+                              </button>
                             ))}
                           </div>
                         </div>
@@ -394,6 +398,27 @@ export default function Returns() {
           </div>
         )}
       </div>
+
+      {/* Image Zoom Lightbox */}
+      {zoomedImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setZoomedImage(null)}
+        >
+          <button
+            className="absolute top-4 right-4 p-2 rounded-2xl bg-white/10 text-white hover:bg-white/20 cursor-pointer"
+            onClick={() => setZoomedImage(null)}
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={zoomedImage}
+            alt="Zoomed attachment"
+            className="max-w-full max-h-[80vh] object-contain rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

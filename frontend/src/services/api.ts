@@ -73,6 +73,14 @@ function buildParams(filters: Record<string, any>): string {
   return params.toString();
 }
 
+export const analyticsApi = {
+  getOverview: () => api.get('/v1/analytics/overview'),
+  getSlaBreach: () => api.get('/v1/analytics/sla-breach'),
+  getCallOutcomes: () => api.get('/v1/analytics/call-outcomes'),
+  getAgentPerformance: () => api.get('/v1/analytics/agent-performance'),
+  getOrderLifecycle: () => api.get('/v1/analytics/order-lifecycle'),
+};
+
 export const taskApi = {
   create: (data: any) => api.post('/v1/tasks', data),
   list: (filters: Record<string, any> = {}) => {

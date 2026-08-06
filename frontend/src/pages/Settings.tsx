@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { settingsApi } from '../services/api';
-import { Settings, Save } from 'lucide-react';
+import { Settings, Save, Truck, MessageSquare, Clock, Globe } from 'lucide-react';
 
 const FIELDS = [
   { key: 'logisticsFollowupHours', label: 'Logistics Follow-up Hours', desc: 'Hours after which a Processing order with no logistics pickup gets a logistics-followup task', type: 'number' },
@@ -15,6 +15,10 @@ const FIELDS = [
   { key: 'returnVendorResponseSlaMinutes', label: 'Return Vendor Response SLA (min)', desc: 'SLA in minutes for obtaining vendor response/approval for return.', type: 'number' },
   { key: 'escalationSlaMinutes', label: 'Escalation SLA (min)', desc: 'SLA in minutes for escalation tasks.', type: 'number' },
   { key: 'priorityAmountThreshold', label: 'Priority Amount Threshold (Rs)', desc: 'Orders with total amount above this Rs value get priority bumped one level (e.g. medium → high).', type: 'number' },
+  { key: 'shippedSlaFromCreationHours', label: 'Shipped SLA — From Creation (hours)', desc: 'SLA hours for shipped orders starting from order creation time.', type: 'number' },
+  { key: 'shippedSlaFromPickupHours', label: 'Shipped SLA — From Pickup Collected (hours)', desc: 'SLA hours for shipped non-heavy logistics orders starting from pickup collected time.', type: 'number' },
+  { key: 'commerceApiBase', label: 'Commerce API Base URL', desc: 'Base URL for the external commerce API (e.g. https://commerce.thecanbrand.com/api). Used for logistics comments and delivery zone group fetching.', type: 'text' },
+  { key: 'commentSlaThresholdMinutes', label: 'Comment SLA Threshold (min)', desc: 'Minutes after which the SLA is considered breached and the comment button appears on shipped orders.', type: 'number' },
 ];
 
 export default function SettingsPage() {

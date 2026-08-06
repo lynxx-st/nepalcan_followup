@@ -3,13 +3,16 @@ import { toast } from 'sonner';
 import { ruleApi } from '../services/api';
 import Breadcrumbs from '../components/Breadcrumbs';
 import {
-  Sliders, Plus, Play, CheckCircle2, ToggleLeft, ToggleRight, Trash2, X,
+  Sliders, Plus, Play, CheckCircle2, ToggleLeft, ToggleRight, Trash2, X, Edit2, Copy,
 } from 'lucide-react';
 
 export default function Rules() {
   const [rules, setRules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingRule, setEditingRule] = useState<string | null>(null);
+  const [showExecLog, setShowExecLog] = useState(false);
+  const [execLogs, setExecLogs] = useState<any[]>([]);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -18,6 +21,11 @@ export default function Rules() {
   const [priority, setPriority] = useState('medium');
   const [delayHours, setDelayHours] = useState(0);
   const [slaMinutes, setSlaMinutes] = useState(60);
+
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editPriority, setEditPriority] = useState('medium');
+  const [editSlaMinutes, setEditSlaMinutes] = useState(60);
 
   const fetchRules = async () => {
     try {
@@ -43,6 +51,15 @@ export default function Rules() {
     setPriority('medium');
     setDelayHours(0);
     setSlaMinutes(60);
+    setEditingRule(null);
+  };
+
+  const openEdit = (rule: any) => {
+    setEditingRule(rule._id);
+    setEditName(rule.name);
+    setEditDescription(rule.description || '');
+    setEditPriority(rule.priority || 'medium');
+    setEditSlaMinutes(rule.slaMinutes || 60);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -78,11 +95,47 @@ export default function Rules() {
     }
   };
 
+  const handleDuplicate = async (rule: any) => {
+    try {
+      await ruleApi.create({ ...rule, name: `${rule.name} (copy)`, _id: undefined });
+      toast.success('Rule duplicated');
+      fetchRules();
+    } catch {
+      toast.error('Failed to duplicate rule');
+    }
+  };
+
+  const handleUpdate = async (id: string) => {
+    try {
+      await ruleApi.update(id, { name: editName, description: editDescription, priority: editPriority, slaMinutes: editSlaMinutes });
+      toast.success('Rule updated');
+      setEditingRule(null);
+      fetchRules();
+    } catch {
+      toast.error('Failed to update rule');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingRule(null);
+  };
+
   const handleRunGenerator = async () => {
     try {
       const result: any = await ruleApi.evaluate({});
       const count = result.data?.generatedCount || 0;
       toast.success(`Evaluated rules! Generated ${count} new tasks.`);
+    } catch {
+      toast.error('Failed to run generator');
+    }
+  };
+
+  const handleRunLog = async () => {
+    try {
+      const result: any = await ruleApi.evaluate({});
+      setExecLogs(result.data?.logs || []);
+      setShowExecLog(true);
+      toast.success(`Evaluated rules!`);
     } catch {
       toast.error('Failed to run generator');
     }
@@ -144,17 +197,33 @@ export default function Rules() {
                       {rule.priority || 'medium'}
                     </span>
                   </div>
-                  <button
-                    onClick={() => handleToggle(rule._id)}
-                    className={`p-1 text-[#737373] hover:text-[#0a0a0a] cursor-pointer`}
-                    title={rule.active ? 'Disable rule' : 'Enable rule'}
-                  >
-                    {rule.active ? (
-                      <ToggleRight className="w-6 h-6 text-[#0a0a0a]" />
-                    ) : (
-                      <ToggleLeft className="w-6 h-6 text-[#737373]" />
-                    )}
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openEdit(rule)}
+                      className="p-1 text-[#737373] hover:text-[#0a0a0a] cursor-pointer"
+                      title="Edit rule"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDuplicate(rule)}
+                      className="p-1 text-[#737373] hover:text-[#0a0a0a] cursor-pointer"
+                      title="Duplicate rule"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleToggle(rule._id)}
+                      className={`p-1 text-[#737373] hover:text-[#0a0a0a] cursor-pointer`}
+                      title={rule.active ? 'Disable rule' : 'Enable rule'}
+                    >
+                      {rule.active ? (
+                        <ToggleRight className="w-6 h-6 text-[#0a0a0a]" />
+                      ) : (
+                        <ToggleLeft className="w-6 h-6 text-[#737373]" />
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 {rule.description && (
@@ -198,120 +267,128 @@ export default function Rules() {
         </div>
       )}
 
-      {/* Add Rule Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in-fast">
-          <div className="bg-[#ffffff] card-blueprint p-6 max-w-lg w-full space-y-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-[#e5e5e5] pb-3">
-              <h3 className="font-bold text-sm text-[#0a0a0a]">Create Task Rule</h3>
-              <button onClick={() => setShowAddModal(false)} className="p-1 text-[#737373] hover:text-[#0a0a0a]">
-                <X className="w-4 h-4" />
-              </button>
+        {/* Add Rule Modal */}
+        {showAddModal && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in-fast">
+            <div className="bg-[#ffffff] card-blueprint p-6 max-w-lg w-full space-y-4 shadow-xl">
+              <div className="flex items-center justify-between border-b border-[#e5e5e5] pb-3">
+                <h3 className="font-bold text-sm text-[#0a0a0a]">Create Task Rule</h3>
+                <button onClick={() => setShowAddModal(false)} className="p-1 text-[#737373] hover:text-[#0a0a0a] cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreate} className="space-y-3 text-xs">
+                <div>
+                  <label className="text-[#737373] font-medium mb-1 block">Rule Name</label>
+                  <input type="text" required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Vendor Delay Call Task" className="input-blueprint w-full" />
+                </div>
+
+                <div>
+                  <label className="text-[#737373] font-medium mb-1 block">Description</label>
+                  <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Rule purpose description..." className="input-blueprint w-full" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[#737373] font-medium mb-1 block">Trigger Event</label>
+                    <select value={trigger} onChange={(e) => setTrigger(e.target.value)} className="input-blueprint w-full">
+                      <option value="order.created">order.created</option>
+                      <option value="order.status.changed">order.status.changed</option>
+                      <option value="order.delivered">order.delivered</option>
+                      <option value="order.cancelled">order.cancelled</option>
+                      <option value="customer.confirmed">customer.confirmed</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[#737373] font-medium mb-1 block">Task Type</label>
+                    <select value={taskType} onChange={(e) => setTaskType(e.target.value)} className="input-blueprint w-full">
+                      <option value="customer-confirmation">customer-confirmation</option>
+                      <option value="vendor-call">vendor-call</option>
+                      <option value="vendor-delay">vendor-delay</option>
+                      <option value="cancelled-recovery">cancelled-recovery</option>
+                      <option value="review-call">review-call</option>
+                      <option value="escalation">escalation</option>
+                      <option value="logistics-followup">logistics-followup</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[#737373] font-medium mb-1 block">Priority</label>
+                    <select value={priority} onChange={(e) => setPriority(e.target.value)} className="input-blueprint w-full">
+                      <option value="critical">critical</option>
+                      <option value="high">high</option>
+                      <option value="medium">medium</option>
+                      <option value="low">low</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[#737373] font-medium mb-1 block">Delay (Hours)</label>
+                    <input type="number" value={delayHours} onChange={(e) => setDelayHours(Number(e.target.value))} className="input-blueprint w-full" />
+                  </div>
+                  <div>
+                    <label className="text-[#737373] font-medium mb-1 block">SLA (Mins)</label>
+                    <input type="number" value={slaMinutes} onChange={(e) => setSlaMinutes(Number(e.target.value))} className="input-blueprint w-full" />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 justify-end pt-3 border-t border-[#e5e5e5]">
+                  <button type="button" onClick={() => setShowAddModal(false)} className="btn-secondary text-xs px-3 py-1.5 cursor-pointer">Cancel</button>
+                  <button type="submit" className="btn-primary text-xs px-4 py-1.5 cursor-pointer">Save Rule</button>
+                </div>
+              </form>
             </div>
-
-            <form onSubmit={handleCreate} className="space-y-3 text-xs">
-              <div>
-                <label className="text-[#737373] font-medium mb-1 block">Rule Name</label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Vendor Delay Call Task"
-                  className="input-blueprint w-full"
-                />
-              </div>
-
-              <div>
-                <label className="text-[#737373] font-medium mb-1 block">Description</label>
-                <input
-                  type="text"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Rule purpose description..."
-                  className="input-blueprint w-full"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[#737373] font-medium mb-1 block">Trigger Event</label>
-                  <select
-                    value={trigger}
-                    onChange={(e) => setTrigger(e.target.value)}
-                    className="input-blueprint w-full"
-                  >
-                    <option value="order.created">order.created</option>
-                    <option value="order.status.changed">order.status.changed</option>
-                    <option value="order.delivered">order.delivered</option>
-                    <option value="order.cancelled">order.cancelled</option>
-                    <option value="customer.confirmed">customer.confirmed</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[#737373] font-medium mb-1 block">Task Type</label>
-                  <select
-                    value={taskType}
-                    onChange={(e) => setTaskType(e.target.value)}
-                    className="input-blueprint w-full"
-                  >
-                    <option value="customer-confirmation">customer-confirmation</option>
-                    <option value="vendor-call">vendor-call</option>
-                    <option value="vendor-delay">vendor-delay</option>
-                    <option value="cancelled-recovery">cancelled-recovery</option>
-                    <option value="review-call">review-call</option>
-                    <option value="escalation">escalation</option>
-                    <option value="logistics-followup">logistics-followup</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-[#737373] font-medium mb-1 block">Priority</label>
-                  <select
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value)}
-                    className="input-blueprint w-full"
-                  >
-                    <option value="critical">critical</option>
-                    <option value="high">high</option>
-                    <option value="medium">medium</option>
-                    <option value="low">low</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[#737373] font-medium mb-1 block">Delay (Hours)</label>
-                  <input
-                    type="number"
-                    value={delayHours}
-                    onChange={(e) => setDelayHours(Number(e.target.value))}
-                    className="input-blueprint w-full"
-                  />
-                </div>
-                <div>
-                  <label className="text-[#737373] font-medium mb-1 block">SLA (Mins)</label>
-                  <input
-                    type="number"
-                    value={slaMinutes}
-                    onChange={(e) => setSlaMinutes(Number(e.target.value))}
-                    className="input-blueprint w-full"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 justify-end pt-3 border-t border-[#e5e5e5]">
-                <button type="button" onClick={() => setShowAddModal(false)} className="btn-secondary text-xs px-3 py-1.5">
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary text-xs px-4 py-1.5">
-                  Save Rule
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Edit Rule Modal */}
+        {editingRule && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in-fast">
+            <div className="bg-[#ffffff] card-blueprint p-6 max-w-lg w-full space-y-4 shadow-xl">
+              <div className="flex items-center justify-between border-b border-[#e5e5e5] pb-3">
+                <h3 className="font-bold text-sm text-[#0a0a0a]">Edit Rule</h3>
+                <button onClick={handleCancelEdit} className="p-1 text-[#737373] hover:text-[#0a0a0a] cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={(e) => { e.preventDefault(); handleUpdate(editingRule); }} className="space-y-3 text-xs">
+                <div>
+                  <label className="text-[#737373] font-medium mb-1 block">Rule Name</label>
+                  <input type="text" required value={editName} onChange={(e) => setEditName(e.target.value)} className="input-blueprint w-full" />
+                </div>
+
+                <div>
+                  <label className="text-[#737373] font-medium mb-1 block">Description</label>
+                  <input type="text" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} className="input-blueprint w-full" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[#737373] font-medium mb-1 block">Priority</label>
+                    <select value={editPriority} onChange={(e) => setEditPriority(e.target.value)} className="input-blueprint w-full">
+                      <option value="critical">critical</option>
+                      <option value="high">high</option>
+                      <option value="medium">medium</option>
+                      <option value="low">low</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[#737373] font-medium mb-1 block">SLA (Mins)</label>
+                    <input type="number" value={editSlaMinutes} onChange={(e) => setEditSlaMinutes(Number(e.target.value))} className="input-blueprint w-full" />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 justify-end pt-3 border-t border-[#e5e5e5]">
+                  <button type="button" onClick={handleCancelEdit} className="btn-secondary text-xs px-3 py-1.5 cursor-pointer">Cancel</button>
+                  <button type="submit" className="btn-primary text-xs px-4 py-1.5 cursor-pointer">Save Changes</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
     </div>
   );
 }

@@ -9,7 +9,7 @@ import {
   PhoneCall, CheckCircle2, XCircle, Clock, Calendar, AlertTriangle,
   PhoneOff, User, Store, PackageCheck, ArrowLeft,
   X, Edit2, FileText, Send, ShoppingBag, MapPin, Package, RefreshCw,
-  Info, MessageSquare,
+  Info, MessageSquare, RotateCcw,
 } from 'lucide-react';
 
 const callPhone = (phone: string) => { window.location.href = `tel:${phone}`; };
