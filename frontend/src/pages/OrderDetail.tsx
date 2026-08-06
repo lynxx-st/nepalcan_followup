@@ -10,7 +10,7 @@ import {
   PhoneCall, CheckCircle2, XCircle, Clock, Calendar, AlertTriangle,
   PhoneOff, User, Store, PackageCheck, ThumbsUp, ArrowLeft,
   X, Edit2, FileText, Send, ShoppingBag, MapPin, Package, RefreshCw, Truck,
-  RotateCcw, ImageIcon, MessageSquare
+  RotateCcw, ImageIcon, MessageSquare, CalendarClock
 } from 'lucide-react';
 
 const callPhone = (phone: string) => { window.location.href = `tel:${phone}`; };
@@ -158,7 +158,7 @@ export default function OrderDetail() {
         await taskApi.schedule(order.activeTaskId, customerScheduleDate);
       }
       setCustomerStatus('rescheduled');
-      await updateStatus({ confirmationStatus: 'rescheduled', note: `Customer call rescheduled for ${customerScheduleDate}` });
+      await updateStatus({ confirmationStatus: 'rescheduled', note: `Customer call rescheduled for ${customerScheduleDate}`, scheduledAt: customerScheduleDate });
       toast.success(`Customer call scheduled for ${customerScheduleDate}`);
       setShowCustomerDatePicker(false);
       setCustomerScheduleDate('');
@@ -180,7 +180,7 @@ export default function OrderDetail() {
         await taskApi.schedule(order.activeTaskId, vendorScheduleDate);
       }
       setVendorStatus('rescheduled');
-      await updateStatus({ vendorStatus: 'rescheduled', note: `Vendor dispatch rescheduled for ${vendorScheduleDate}` });
+      await updateStatus({ vendorStatus: 'rescheduled', note: `Vendor dispatch rescheduled for ${vendorScheduleDate}`, scheduledAt: vendorScheduleDate });
       toast.success(`Vendor dispatch scheduled for ${vendorScheduleDate}`);
       setShowVendorDatePicker(false);
       setVendorScheduleDate('');
@@ -461,8 +461,74 @@ export default function OrderDetail() {
         {/* RIGHT: Workflow Confirmation Actions Card (DYNAMIC ACCORDING TO TASK STAGE) */}
         <div className="lg:col-span-7 card-blueprint p-4 space-y-3 bg-[#ffffff]">
 
-          {/* 1. CONFIRMED BUT UNPROCESSED STAGE -> ONLY SHOW VENDOR CALL */}
-          {stage === 'confirmed_unprocessed' ? (
+          {/* 0. RESCHEDULED STAGE -> SHOW RESCHEDULE INFO + RESUME ACTIONS */}
+          {stage === 'rescheduled' ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b border-[#e5e5e5] pb-2.5">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-[#737373]">
+                  Rescheduled Module
+                </h2>
+                <span className="badge-pill bg-amber-500 text-white font-medium text-[10px]">
+                  Rescheduled
+                </span>
+              </div>
+              <div className="p-3.5 bg-[#fafafa] border border-[#e5e5e5] rounded-2xl space-y-2 text-xs">
+                <div className="flex items-center gap-1.5 text-[#0a0a0a] font-bold">
+                  <CalendarClock className="w-4 h-4 text-amber-600" />
+                  {cs === 'rescheduled' ? 'Customer call' : 'Vendor dispatch'} rescheduled
+                  {order.rescheduledAt ? ` for ${new Date(order.rescheduledAt).toLocaleString()}` : ''}
+                </div>
+                <p className="text-[11px] text-[#737373]">
+                  Current status — Customer: <span className="font-semibold text-[#0a0a0a]">{cs}</span> · Vendor: <span className="font-semibold text-[#0a0a0a]">{vs}</span>
+                </p>
+                {(() => {
+                  const lastNote = [...(order.statusHistory || [])].reverse().find((h: any) => String(h.comment || h.note || '').toLowerCase().includes('reschedul'));
+                  return lastNote?.comment ? (
+                    <p className="text-[11px] text-[#737373] bg-[#ffffff] border border-[#e5e5e5] rounded-xl p-2">{lastNote.comment}</p>
+                  ) : null;
+                })()}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {customerPhone !== 'N/A' && (
+                    <button onClick={() => callPhone(customerPhone)} className="btn-outline text-xs px-4 py-2 cursor-pointer flex items-center gap-1.5 min-h-[44px]">
+                      <PhoneCall className="w-3.5 h-3.5" />
+                      <span>Call Customer</span>
+                    </button>
+                  )}
+                  {vendorPhone !== 'N/A' && (
+                    <button onClick={() => callPhone(vendorPhone)} className="btn-outline text-xs px-4 py-2 cursor-pointer flex items-center gap-1.5 min-h-[44px]">
+                      <Store className="w-3.5 h-3.5" />
+                      <span>Call Vendor</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="pt-1">
+                <p className="text-[11px] text-[#737373] mb-2">Resume the flow after the follow-up call:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {cs === 'rescheduled' && (
+                    <button
+                      onClick={() => handleCustomerOutcome('confirmed')}
+                      disabled={saving}
+                      className="btn-primary text-xs px-3 py-1.5 cursor-pointer flex items-center gap-1.5 min-h-[44px]"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Mark Customer Confirmed</span>
+                    </button>
+                  )}
+                  {vs === 'rescheduled' && (
+                    <button
+                      onClick={() => handleVendorOutcome('accepted')}
+                      disabled={saving}
+                      className="btn-outline text-xs px-3 py-1.5 cursor-pointer text-emerald-800 bg-emerald-50 border-emerald-300 font-bold flex items-center gap-1.5 min-h-[44px]"
+                    >
+                      <Store className="w-3.5 h-3.5" />
+                      <span>Mark Vendor Accepted</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : stage === 'confirmed_unprocessed' ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b border-[#e5e5e5] pb-2.5">
                 <h2 className="text-xs font-bold uppercase tracking-wider text-[#737373]">

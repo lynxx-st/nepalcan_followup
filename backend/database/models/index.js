@@ -382,7 +382,7 @@ const CommerceOrderSchema = new mongoose.Schema({
   // ── Workflow (Computed, Indexed) ──
   workflowStage: {
     type: String,
-    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'done', 'rescheduled', 'customer_response', 'vendor_response', 'other'],
+    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'done', 'rescheduled', 'shipped', 'customer_response', 'vendor_response', 'other'],
     default: 'other',
   },
   workflowPriority: {
@@ -423,6 +423,9 @@ const CommerceOrderSchema = new mongoose.Schema({
   externalCreatedAt: { type: Date },
   deliveredAt: { type: Date, index: true },
   timeToDeliveryMs: { type: Number },
+
+  // ── Reschedule tracking (customer/vendor call rescheduled) ──
+  rescheduledAt: { type: Date },
 
   // ── Customer ──
   customer: {

@@ -346,6 +346,7 @@ async function getOrderDetail(req, res) {
         sla: existing.sla || null,
         deliveredAt: existing.deliveredAt || null,
         timeToDeliveryMs: existing.timeToDeliveryMs || null,
+        rescheduledAt: existing.rescheduledAt || null,
         activeTaskId: activeTask?._id || null,
       };
       return res.json({ success: true, data: cached, cached: true });    }
@@ -414,6 +415,7 @@ async function getOrderDetail(req, res) {
         sla: existing?.sla || null,
         deliveredAt: existing?.deliveredAt || null,
         timeToDeliveryMs: existing?.timeToDeliveryMs || null,
+        rescheduledAt: existing?.rescheduledAt || null,
         activeTaskId: activeTask?._id || null,
       };
       return res.json({ success: true, data: decodedResponse, cached: false });
@@ -492,7 +494,7 @@ async function updateOrderPhone(req, res) {
 async function updateOrderStatus(req, res) {
   try {
     const { commerceOrderId } = req.params;
-    const { confirmationStatus, vendorStatus, orderStatus, note, review } = req.body;
+    const { confirmationStatus, vendorStatus, orderStatus, note, review, scheduledAt } = req.body;
 
     const existing = await CommerceOrder.findOne({ commerceOrderId });
     if (!existing) {
@@ -510,6 +512,10 @@ async function updateOrderStatus(req, res) {
     if (dm) {
       update.deliveredAt = dm.deliveredAt;
       update.timeToDeliveryMs = dm.timeToDeliveryMs;
+    }
+
+    if ((confirmationStatus === 'rescheduled' || vendorStatus === 'rescheduled') && !existing.rescheduledAt) {
+      update.rescheduledAt = scheduledAt ? new Date(scheduledAt) : new Date();
     }
 
     const historyEntry = {
