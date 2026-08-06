@@ -724,17 +724,24 @@ class CommerceSyncService {
       return 'pending_review';
     }
 
-    // Processing (picked up by logistics)
-    if (os === 'processing') return 'confirmed_unprocessed';
+    // Processing (picked up by logistics) — only if both customer and vendor are confirmed
+    if (os === 'processing' && cs === 'confirmed' && vs === 'accepted') {
+      return 'confirmed_unprocessed';
+    }
 
     // Both customer AND vendor confirmed → confirmed_unprocessed (awaiting pickup/dropoff)
     if (cs === 'confirmed' && vs === 'accepted') {
       return 'confirmed_unprocessed';
     }
 
-    // Only customer confirmed → done (marked done in pre-processing)
-    if (cs === 'confirmed') {
+    // Only customer confirmed (vendor not yet accepted) → done (marked done in pre-processing)
+    if (cs === 'confirmed' && vs !== 'accepted') {
       return 'done';
+    }
+
+    // Only vendor confirmed (customer not yet confirmed) → stays in pending_confirmation
+    if (vs === 'accepted' && cs !== 'confirmed') {
+      return 'pending_confirmation';
     }
 
     if (cs === 'pending' && os === 'pending') return 'pending_confirmation';

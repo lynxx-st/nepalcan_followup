@@ -25,7 +25,13 @@ assert.strictEqual(
   stageOf({ customer: { confirmationStatus: 'confirmed' }, vendor: { vendorStatus: 'accepted' } }),
   'confirmed_unprocessed'
 );
-assert.strictEqual(stageOf({ commerce: { orderStatus: 'Processing' } }), 'confirmed_unprocessed');
+// Processing (picked up) only if both customer and vendor confirmed
+assert.strictEqual(
+  stageOf({ customer: { confirmationStatus: 'confirmed' }, vendor: { vendorStatus: 'accepted' }, commerce: { orderStatus: 'Processing' } }),
+  'confirmed_unprocessed'
+);
+// Only vendor confirmed (customer not confirmed) -> stays in pending_confirmation
+assert.strictEqual(stageOf({ vendor: { vendorStatus: 'accepted' } }), 'pending_confirmation');
 
 // Shipped orders -> shipped stage
 assert.strictEqual(stageOf({ commerce: { orderStatus: 'Shipped' } }), 'shipped');
