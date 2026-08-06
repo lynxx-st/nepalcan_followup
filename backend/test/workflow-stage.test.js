@@ -25,10 +25,10 @@ assert.strictEqual(
   stageOf({ customer: { confirmationStatus: 'confirmed' }, vendor: { vendorStatus: 'accepted' } }),
   'confirmed_unprocessed'
 );
-// Processing (picked up) only if both customer and vendor confirmed
+// Processing (picked up by logistics) -> collected_by_logistics
 assert.strictEqual(
   stageOf({ customer: { confirmationStatus: 'confirmed' }, vendor: { vendorStatus: 'accepted' }, commerce: { orderStatus: 'Processing' } }),
-  'confirmed_unprocessed'
+  'collected_by_logistics'
 );
 // Only vendor confirmed (customer not confirmed) -> stays in pending_confirmation
 assert.strictEqual(stageOf({ vendor: { vendorStatus: 'accepted' } }), 'pending_confirmation');

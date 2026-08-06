@@ -386,7 +386,7 @@ const CommerceOrderSchema = new mongoose.Schema({
   // ── Workflow (Computed, Indexed) ──
   workflowStage: {
     type: String,
-    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'done', 'rescheduled', 'shipped', 'customer_response', 'vendor_response', 'other'],
+    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'collected_by_logistics', 'done', 'rescheduled', 'shipped', 'customer_response', 'vendor_response', 'other'],
     default: 'other',
   },
   workflowPriority: {

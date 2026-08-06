@@ -724,9 +724,9 @@ class CommerceSyncService {
       return 'pending_review';
     }
 
-    // Processing (picked up by logistics) — only if both customer and vendor are confirmed
+    // Processing (picked up by logistics) → collected_by_logistics
     if (os === 'processing' && cs === 'confirmed' && vs === 'accepted') {
-      return 'confirmed_unprocessed';
+      return 'collected_by_logistics';
     }
 
     // Both customer AND vendor confirmed → confirmed_unprocessed (awaiting pickup/dropoff)
@@ -777,6 +777,7 @@ class CommerceSyncService {
     const map = {
       pending_confirmation: 'customer-confirmation',
       confirmed_unprocessed: 'vendor-call',
+      collected_by_logistics: 'logistics-followup',
       shipped: 'logistics-followup',
       pending_review: 'review-call',
       customer_response: 'return-customer-response',
