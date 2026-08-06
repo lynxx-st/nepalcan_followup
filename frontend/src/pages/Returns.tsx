@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { commerceApi } from '../services/api';
 import Breadcrumbs from '../components/Breadcrumbs';
+import ImageZoom from '../components/ImageZoom';
 import {
   RotateCcw, PhoneCall, Store, CheckCircle2, XCircle, Search,
-  Eye, Package, FileText, Image as ImageIcon, Clock, ArrowLeft, X,
+  Eye, Package, FileText, Image as ImageIcon, Clock, ArrowLeft,
 } from 'lucide-react';
 
 const PAGE_SIZE = 10;
@@ -401,23 +402,7 @@ export default function Returns() {
 
       {/* Image Zoom Lightbox */}
       {zoomedImage && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 cursor-pointer"
-          onClick={() => setZoomedImage(null)}
-        >
-          <button
-            className="absolute top-4 right-4 p-2 rounded-2xl bg-white/10 text-white hover:bg-white/20 cursor-pointer"
-            onClick={() => setZoomedImage(null)}
-          >
-            <X className="w-6 h-6" />
-          </button>
-          <img
-            src={zoomedImage}
-            alt="Zoomed attachment"
-            className="max-w-full max-h-[80vh] object-contain rounded-2xl"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
+        <ImageZoom src={zoomedImage} onClose={() => setZoomedImage(null)} />
       )}
     </div>
   );
