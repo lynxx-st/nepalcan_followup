@@ -20,6 +20,7 @@ desktop.ini
 
 # Office temp lock files
 ~$*.docx
+APIDOCS.docx
 
 agent/
 example ui/
