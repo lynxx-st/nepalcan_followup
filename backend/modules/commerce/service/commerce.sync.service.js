@@ -719,32 +719,21 @@ class CommerceSyncService {
     if (cs === 'rescheduled' || vs === 'rescheduled') return 'rescheduled';
     if (os === 'shipped') return 'shipped';
 
-    // Delivered orders: check if review followup delay has passed
+    // Delivered orders
     if (['delivered', 'return delivered'].includes(os)) {
-      const deliveredAt = order.externalUpdatedAt || order.commerce?.deliveryEvent ? new Date() : null;
-      if (deliveredAt) {
-        const delayMs = this.reviewFollowupDelayHours * 60 * 60 * 1000;
-        const timeSinceDelivery = Date.now() - new Date(deliveredAt).getTime();
-        if (timeSinceDelivery >= delayMs) {
-          return 'pending_review';
-        }
-      }
       return 'pending_review';
     }
 
+    // Processing (picked up by logistics)
     if (os === 'processing') return 'confirmed_unprocessed';
 
-    // Only after BOTH customer and vendor are confirmed, move to confirmed_unprocessed
+    // Both customer AND vendor confirmed → confirmed_unprocessed (awaiting pickup/dropoff)
     if (cs === 'confirmed' && vs === 'accepted') {
       return 'confirmed_unprocessed';
     }
 
-    // Customer follow-up accepted / confirmed -> move to marked done inside pre processing
+    // Only customer confirmed → done (marked done in pre-processing)
     if (cs === 'confirmed') {
-      const isSlaBreached = this.isOrderSlaBreached(order);
-      if (isSlaBreached) {
-        return 'confirmed_unprocessed';
-      }
       return 'done';
     }
 

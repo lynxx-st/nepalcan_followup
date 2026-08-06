@@ -17,14 +17,10 @@ assert.strictEqual(
   'rescheduled'
 );
 
-// Customer confirmed: stays 'done' until vendor accepts or SLA breaches
+// Customer confirmed only -> done (marked done in pre-processing)
 assert.strictEqual(stageOf({ customer: { confirmationStatus: 'confirmed' } }), 'done');
-assert.strictEqual(
-  stageOf({ customer: { confirmationStatus: 'confirmed' }, dueAt: new Date(Date.now() - 60000) }),
-  'confirmed_unprocessed'
-);
 
-// Vendor accepts -> confirmed_unprocessed; processing orders land there too
+// Both customer and vendor confirmed -> confirmed_unprocessed (awaiting pickup)
 assert.strictEqual(
   stageOf({ customer: { confirmationStatus: 'confirmed' }, vendor: { vendorStatus: 'accepted' } }),
   'confirmed_unprocessed'
