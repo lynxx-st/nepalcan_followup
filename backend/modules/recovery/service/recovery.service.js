@@ -6,7 +6,7 @@ class RecoveryService {
     return RecoveryCampaign.create(data);
   }
 
-  async recordOrderRecovery({ order, isCancel, fromStatus, toStatus }) {
+  async recordOrderRecovery({ order, isCancel, fromStatus, toStatus, recoveredBy }) {
     const orderId = order.commerceOrderId || String(order._id);
     const customerName = order.customer && typeof order.customer === 'object' ? order.customer.name : order.customer;
     const customerPhone = order.customer?.phone || order.customerPhone;
@@ -56,12 +56,14 @@ class RecoveryService {
         revenueAmount: totalAmount,
         cancellationReason: reason,
         outcome: 'recovered',
+        recoveredBy: recoveredBy || undefined,
         recoveredRevenue: totalAmount,
         steps: [revivedStep],
       });
     }
     if (existing.outcome !== 'recovered') {
       existing.outcome = 'recovered';
+      existing.recoveredBy = recoveredBy || existing.recoveredBy;
       existing.recoveredRevenue = totalAmount || existing.revenueAmount;
       existing.steps.push(revivedStep);
       await existing.save();
@@ -94,6 +96,7 @@ class RecoveryService {
       if (hasAllResolved && data.outcome) campaign.outcome = data.outcome;
     }
     if (data.outcome !== undefined) campaign.outcome = data.outcome;
+    if (data.recoveredBy !== undefined) campaign.recoveredBy = data.recoveredBy;
     if (data.recoveredRevenue !== undefined) campaign.recoveredRevenue = data.recoveredRevenue;
 
     return RecoveryCampaign.findByIdAndUpdate(id, campaign, { new: true, runValidators: true });

@@ -423,6 +423,7 @@ class CommerceSyncService {
                 isCancel,
                 fromStatus: prevStatus,
                 toStatus: nextStatus,
+                recoveredBy: wasCancel && !isCancel ? 'API Sync' : undefined,
               }).catch((err) => logger.error('Recovery record failed', { orderId: order.orderId, message: err.message }));
             }
           }
@@ -650,6 +651,11 @@ class CommerceSyncService {
         taskType = 'cancelled-recovery';
         break;
 
+      case 'Hold':
+        priority = 'high';
+        taskType = 'customer-confirmation';
+        break;
+
       case 'Delivered':
       case 'Return Delivered':
         priority = 'low';
@@ -717,6 +723,8 @@ class CommerceSyncService {
     const os = (order.commerce?.orderStatus || order.orderStatus || '').toLowerCase();
 
     if (cs === 'rescheduled' || vs === 'rescheduled') return 'rescheduled';
+    if (os === 'cancelled') return 'cancelled';
+    if (os === 'hold') return 'hold';
     if (os === 'shipped') return 'shipped';
 
     // Delivered orders
@@ -783,6 +791,8 @@ class CommerceSyncService {
       customer_response: 'return-customer-response',
       vendor_response: 'return-vendor-response',
       rescheduled: 'cancelled-recovery',
+      cancelled: 'cancelled-recovery',
+      hold: 'customer-confirmation',
     };
     return map[stage] || 'customer-confirmation';
   }

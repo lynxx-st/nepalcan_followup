@@ -8,11 +8,14 @@ import TodayWork from './pages/TodayWork';
 import NextCall from './pages/NextCall';
 import Orders from './pages/Orders';
 import OrderDetail from './pages/OrderDetail';
+import OrderCollectedByLogistics from './pages/OrderCollectedByLogistics';
 import OrderConfirmedUnprocessed from './pages/OrderConfirmedUnprocessed';
 import OrderShipped from './pages/OrderShipped';
 import OrderPendingReview from './pages/OrderPendingReview';
 import OrderCustomerResponse from './pages/OrderCustomerResponse';
 import OrderVendorResponse from './pages/OrderVendorResponse';
+import OrderCancelled from './pages/OrderCancelled';
+import OrderHold from './pages/OrderHold';
 import Reviews from './pages/Reviews';
 import Returns from './pages/Returns';
 import TaskDetail from './pages/TaskDetail';
@@ -35,10 +38,13 @@ function AppRoutes() {
       <Route path="/orders" element={<Orders />} />
       <Route path="/orders/:commerceOrderId" element={<OrderDetail />} />
       <Route path="/orders/:commerceOrderId/confirmed-unprocessed" element={<OrderConfirmedUnprocessed />} />
+      <Route path="/orders/:commerceOrderId/collected-by-logistics" element={<OrderCollectedByLogistics />} />
       <Route path="/orders/:commerceOrderId/shipped" element={<OrderShipped />} />
       <Route path="/orders/:commerceOrderId/pending-review" element={<OrderPendingReview />} />
       <Route path="/orders/:commerceOrderId/customer-response" element={<OrderCustomerResponse />} />
       <Route path="/orders/:commerceOrderId/vendor-response" element={<OrderVendorResponse />} />
+      <Route path="/orders/:commerceOrderId/cancelled" element={<OrderCancelled />} />
+      <Route path="/orders/:commerceOrderId/hold" element={<OrderHold />} />
       <Route path="/reviews" element={<Reviews />} />
       <Route path="/returns" element={<Returns />} />
       <Route path="/tasks/:id" element={<TaskDetail />} />

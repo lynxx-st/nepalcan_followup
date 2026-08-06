@@ -223,11 +223,14 @@ async function getSegmentCounts(req, res) {
       pending_confirmation: 0,
       pending_review: 0,
       confirmed_unprocessed: 0,
+      collected_by_logistics: 0,
       done: 0,
       rescheduled: 0,
       shipped: 0,
       customer_response: 0,
       vendor_response: 0,
+      cancelled: 0,
+      hold: 0,
       other: 0
     };
     
@@ -579,6 +582,7 @@ async function updateOrderStatus(req, res) {
           isCancel,
           fromStatus: prevStatus,
           toStatus: orderStatus,
+          recoveredBy: wasCancel && !isCancel ? (req.user?.name || req.user?.email || 'staff') : undefined,
         }).catch((err) => console.error('Recovery record failed', err));
       }
     }

@@ -107,9 +107,9 @@ When displaying orders or tasks, bundle them into the four standard lifecycle st
 | Lifecycle Stage | Scope & Included Statuses | Key Action |
 |---|---|---|
 | **Pre Order** | `pending_confirmation`, unconfirmed orders, customer validation | Phone confirmation call |
-| **Processing** | `confirmed_unprocessed`, `shipped`, vendor assignment, logistics delay | Vendor call, Logistics followup |
+| **Processing** | `confirmed_unprocessed`, `collected_by_logistics` (customer confirmed + vendor accepted + order status `processing`; moves to `shipped` only when order status is `shipped`), `shipped`, vendor assignment, logistics delay | Vendor call, Logistics followup |
 | **After Delivery** | `delivered_followup`, `pending_review`, product reviews | Review call, NPS feedback |
-| **Return** | `rescheduled`, `cancelled-recovery`, refund request | Recovery campaign call |
+| **Return** | `rescheduled`, `cancelled` (recovery call → recovered orders tracked on Recovery page with `recoveredBy`), `hold` (order status `hold` from API), `cancelled-recovery`, refund request | Recovery campaign call |
 
 ---
 

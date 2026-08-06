@@ -25,8 +25,8 @@ const STAGE_BUNDLES = [
   {
     key: 'processing',
     label: 'Processing',
-    description: 'Confirmed, packaging, vendor call & shipping',
-    segments: ['confirmed_unprocessed', 'shipped'],
+    description: 'Confirmed, packaging, vendor call, logistics collection & shipping',
+    segments: ['confirmed_unprocessed', 'collected_by_logistics', 'shipped'],
   },
   {
     key: 'after_delivery',
@@ -37,8 +37,8 @@ const STAGE_BUNDLES = [
   {
     key: 'return',
     label: 'Return & Recovery',
-    description: 'Return responses, rescheduled calls & recoveries',
-    segments: ['customer_response', 'vendor_response', 'rescheduled'],
+    description: 'Return responses, rescheduled calls, cancelled & hold orders',
+    segments: ['customer_response', 'vendor_response', 'rescheduled', 'cancelled', 'hold'],
   },
 ] as const;
 
@@ -46,11 +46,14 @@ const SEGMENTS = [
   { key: 'pending_confirmation', label: 'Pending Order Confirmation', icon: PhoneCall, stage: 'pre_order' },
   { key: 'done', label: 'Marked Done', icon: CheckCircle2, stage: 'pre_order' },
   { key: 'confirmed_unprocessed', label: 'Confirmed But Unprocessed', icon: PackageCheck, stage: 'processing' },
+  { key: 'collected_by_logistics', label: 'Collected by Logistics', icon: Truck, stage: 'processing' },
   { key: 'shipped', label: 'Shipped Orders', icon: Truck, stage: 'processing' },
   { key: 'pending_review', label: 'Pending Review Calls', icon: ThumbsUp, stage: 'after_delivery' },
   { key: 'customer_response', label: 'Return: Customer Response', icon: PhoneCall, stage: 'return' },
   { key: 'vendor_response', label: 'Return: Vendor Response', icon: Store, stage: 'return' },
   { key: 'rescheduled', label: 'Rescheduled Orders', icon: CalendarClock, stage: 'return' },
+  { key: 'cancelled', label: 'Cancelled Orders', icon: XCircle, stage: 'return' },
+  { key: 'hold', label: 'Hold Orders', icon: Clock, stage: 'return' },
 ] as const;
 
 const PAGE_SIZE = 10;
@@ -186,10 +189,13 @@ export default function Orders() {
     const id = order.commerceOrderId || order._id;
     const stagePaths: Record<string, string> = {
       confirmed_unprocessed: `${id}/confirmed-unprocessed`,
+      collected_by_logistics: `${id}/collected-by-logistics`,
       shipped: `${id}/shipped`,
       pending_review: `${id}/pending-review`,
       customer_response: `${id}/customer-response`,
       vendor_response: `${id}/vendor-response`,
+      cancelled: `${id}/cancelled`,
+      hold: `${id}/hold`,
     };
     return `/orders/${stagePaths[order.workflowStage] || id}`;
   };
@@ -214,6 +220,26 @@ export default function Orders() {
             <Link
               to={getStagePath(order)}
               className={`btn-outline text-xs ${isMobile ? 'py-2.5 px-3 min-h-[44px] flex items-center justify-center' : 'px-3 py-1.5'}`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>View</span>
+            </Link>
+          </div>
+        );
+
+      case 'collected_by_logistics':
+        return (
+          <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setLogisticsOrder(order)}
+              className={`btn-outline text-xs ${isMobile ? 'py-2.5 flex-1 min-h-[44px] justify-center' : 'px-3 py-1.5'}`}
+            >
+              <Truck className="w-3.5 h-3.5 text-purple-600" />
+              <span>Logistics Status</span>
+            </button>
+            <Link
+              to={getStagePath(order)}
+              className={`btn-primary text-xs ${isMobile ? 'py-2.5 px-3 min-h-[44px] flex items-center justify-center' : 'px-3 py-1.5'}`}
             >
               <Eye className="w-3.5 h-3.5" />
               <span>View</span>
@@ -309,6 +335,50 @@ export default function Orders() {
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Vendor Approval</span>
+            </Link>
+          </div>
+        );
+
+      case 'cancelled':
+        return (
+          <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+            {customerPhone && (
+              <a
+                href={`tel:${customerPhone}`}
+                className={`btn-primary text-xs ${isMobile ? 'py-2.5 flex-1 min-h-[44px] justify-center' : 'px-3 py-1.5'}`}
+              >
+                <PhoneCall className="w-3.5 h-3.5" />
+                <span>Call Customer</span>
+              </a>
+            )}
+            <Link
+              to={getStagePath(order)}
+              className={`btn-outline text-xs ${isMobile ? 'py-2.5 px-3 min-h-[44px] flex items-center justify-center' : 'px-3 py-1.5'}`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>View</span>
+            </Link>
+          </div>
+        );
+
+      case 'hold':
+        return (
+          <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+            {customerPhone && (
+              <a
+                href={`tel:${customerPhone}`}
+                className={`btn-primary text-xs ${isMobile ? 'py-2.5 flex-1 min-h-[44px] justify-center' : 'px-3 py-1.5'}`}
+              >
+                <PhoneCall className="w-3.5 h-3.5" />
+                <span>Call Customer</span>
+              </a>
+            )}
+            <Link
+              to={getStagePath(order)}
+              className={`btn-outline text-xs ${isMobile ? 'py-2.5 px-3 min-h-[44px] flex items-center justify-center' : 'px-3 py-1.5'}`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>View</span>
             </Link>
           </div>
         );

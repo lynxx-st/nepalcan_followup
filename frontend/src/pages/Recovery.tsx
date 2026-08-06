@@ -180,6 +180,11 @@ export default function Recovery() {
                     <p className="text-[10px] text-[#737373] capitalize mt-0.5">
                       Outcome: {r.outcome || 'pending'}
                     </p>
+                    {r.outcome === 'recovered' && r.recoveredBy && (
+                      <p className="text-[10px] text-emerald-700 font-semibold mt-0.5">
+                        Recovered by: {r.recoveredBy}
+                      </p>
+                    )}
                   </div>
                 </div>
 

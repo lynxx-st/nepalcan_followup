@@ -355,6 +355,9 @@ const RecoveryCampaignSchema = new mongoose.Schema({
     enum: ['recovered', 'lost', 'in-progress'],
     default: 'in-progress',
   },
+  recoveredBy: {
+    type: String,
+  },
   recoveredRevenue: {
     type: Number,
     default: 0,
@@ -386,7 +389,7 @@ const CommerceOrderSchema = new mongoose.Schema({
   // ── Workflow (Computed, Indexed) ──
   workflowStage: {
     type: String,
-    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'collected_by_logistics', 'done', 'rescheduled', 'shipped', 'customer_response', 'vendor_response', 'other'],
+    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'collected_by_logistics', 'done', 'rescheduled', 'shipped', 'customer_response', 'vendor_response', 'cancelled', 'hold', 'other'],
     default: 'other',
   },
   workflowPriority: {

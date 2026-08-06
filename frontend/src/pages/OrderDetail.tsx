@@ -566,6 +566,46 @@ export default function OrderDetail() {
                 </div>
               </div>
             </div>
+          ) : stage === 'collected_by_logistics' ? (
+            /* COLLECTED BY LOGISTICS STAGE -> SHOW LOGISTICS STATUS & TIMELINE, AWAITING SHIPMENT */
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b border-[#e5e5e5] pb-2.5">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-[#737373] flex items-center gap-1.5">
+                  <Truck className="w-4 h-4 text-purple-600" />
+                  Collected by Logistics — Awaiting Shipment
+                </h2>
+                <span className="badge-pill bg-purple-600 text-white font-medium text-[10px]">
+                  Collected
+                </span>
+              </div>
+              <p className="text-xs text-[#737373]">
+                Logistics has collected the parcel from the vendor. Follow up until it is marked shipped:
+              </p>
+              <LogisticsTimeline
+                events={order.externalStatusHistory}
+                externalLogisticsOrderId={order.externalLogisticsOrderId || order.externalNonHeavyLogisticsId}
+              />
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {vendorPhone !== 'N/A' && (
+                  <button
+                    onClick={() => callPhone(vendorPhone)}
+                    className="btn-primary text-xs px-4 py-2 cursor-pointer flex items-center gap-1.5 min-h-[44px]"
+                  >
+                    <Store className="w-3.5 h-3.5" />
+                    <span>Call Vendor (Logistics)</span>
+                  </button>
+                )}
+                {customerPhone !== 'N/A' && (
+                  <button
+                    onClick={() => callPhone(customerPhone)}
+                    className="btn-outline text-xs px-4 py-2 cursor-pointer flex items-center gap-1.5 min-h-[44px]"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    <span>Call Customer</span>
+                  </button>
+                )}
+              </div>
+            </div>
           ) : stage === 'shipped' ? (
             /* 2. SHIPPED STAGE -> SHOW LOGISTICS STATUS & TIMELINE FROM ORDER API */
             <div className="space-y-3">
@@ -721,6 +761,77 @@ export default function OrderDetail() {
                       </button>
                     </div>
                   </>
+                )}
+              </div>
+            </div>
+          ) : stage === 'cancelled' ? (
+            /* CANCELLED STAGE -> CUSTOMER RECOVERY CALL MODULE ONLY */
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b border-[#e5e5e5] pb-2.5">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-[#737373] flex items-center gap-1.5">
+                  <RotateCcw className="w-4 h-4 text-[#e7000b]" />
+                  Customer Recovery Call Module
+                </h2>
+                <span className="badge-pill bg-[#e7000b] text-white font-medium text-[10px]">
+                  Cancelled
+                </span>
+              </div>
+              <div className="p-3.5 bg-[#fafafa] border border-[#e5e5e5] rounded-2xl space-y-2 text-xs">
+                <p className="font-bold text-[#0a0a0a]">
+                  Cancellation Reason: {order.commerce?.cancelledReason || order.cancelledReason || 'Not specified'}
+                </p>
+                {(order.commerce?.cancelledBy || order.cancelledBy) && (
+                  <p className="text-[11px] text-[#737373]">Cancelled by: {order.commerce?.cancelledBy || order.cancelledBy}</p>
+                )}
+              </div>
+              <p className="text-xs text-[#737373]">
+                Call the customer to understand the cancellation and attempt recovery:
+              </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {customerPhone !== 'N/A' && (
+                  <button
+                    onClick={() => callPhone(customerPhone)}
+                    className="btn-primary text-xs px-4 py-2 cursor-pointer flex items-center gap-1.5 min-h-[44px]"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    <span>Call Customer</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : stage === 'hold' ? (
+            /* HOLD STAGE -> CUSTOMER FOLLOW-UP MODULE */
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b border-[#e5e5e5] pb-2.5">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-[#737373] flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-amber-600" />
+                  Hold Follow-up Module
+                </h2>
+                <span className="badge-pill bg-amber-500 text-white font-medium text-[10px]">
+                  On Hold
+                </span>
+              </div>
+              <p className="text-xs text-[#737373]">
+                This order is on hold. Follow up with the customer to resolve the hold reason:
+              </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {customerPhone !== 'N/A' && (
+                  <button
+                    onClick={() => callPhone(customerPhone)}
+                    className="btn-primary text-xs px-4 py-2 cursor-pointer flex items-center gap-1.5 min-h-[44px]"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    <span>Call Customer</span>
+                  </button>
+                )}
+                {vendorPhone !== 'N/A' && (
+                  <button
+                    onClick={() => callPhone(vendorPhone)}
+                    className="btn-outline text-xs px-4 py-2 cursor-pointer flex items-center gap-1.5 min-h-[44px]"
+                  >
+                    <Store className="w-3.5 h-3.5" />
+                    <span>Call Vendor</span>
+                  </button>
                 )}
               </div>
             </div>
