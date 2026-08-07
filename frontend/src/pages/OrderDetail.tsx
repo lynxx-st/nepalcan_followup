@@ -270,8 +270,12 @@ export default function OrderDetail() {
 
   const customerName = entityName(order.customer?.name) || 'Customer';
   const customerPhone = order.customerPhone || order.customer?.phone || 'N/A';
+  const customerAddress = order.shippingAddress?.address || order.customerProfile?.address || order.commerce?.shippingAddress?.address || order.customer?.address;
+  const customerBranch = order.destinationBranch?.name || order.commerce?.branch || order.customerProfile?.branch || order.customer?.branch;
   const vendorName = entityName(order.vendor?.name) || order.vendorName || 'Vendor';
   const vendorPhone = order.vendorPhone || order.vendor?.phone || 'N/A';
+  const vendorBranch = order.originBranch?.name || order.vendor?.address || order.commerce?.destinationBranch || order.vendor?.info?.branch || order.vendor?.branch;
+  const vendorAddress = order.vendor?.address;
   const items = order.items || order.commerce?.items || [];
   const notes = order.notes || [];
   const cs = customerStatus || order.confirmationStatus || 'pending';
@@ -445,6 +449,15 @@ export default function OrderDetail() {
               </div>
               <p className="font-semibold text-[#0a0a0a] truncate">{customerName}</p>
               <p className="text-[#737373] truncate">{customerPhone}</p>
+              {customerAddress && (
+                <p className="text-[10px] text-[#737373] truncate flex items-center gap-1 mt-1">
+                  <MapPin className="w-2.5 h-2.5" />
+                  <span>Address: {customerAddress}</span>
+                </p>
+              )}
+              {customerBranch && (
+                <p className="text-[10px] text-[#737373] truncate mt-1">Branch: {customerBranch}</p>
+              )}
             </div>
 
             <div className="bg-[#fafafa] p-2 rounded-xl border border-[#e5e5e5]">
@@ -454,6 +467,15 @@ export default function OrderDetail() {
               </div>
               <p className="font-semibold text-[#0a0a0a] truncate">{vendorName}</p>
               <p className="text-[#737373] truncate">{vendorPhone}</p>
+              {vendorAddress && (
+                <p className="text-[10px] text-[#737373] truncate flex items-center gap-1 mt-1">
+                  <MapPin className="w-2.5 h-2.5" />
+                  <span>Address: {vendorAddress}</span>
+                </p>
+              )}
+              {vendorBranch && (
+                <p className="text-[10px] text-[#737373] truncate mt-1">Branch: {vendorBranch}</p>
+              )}
             </div>
           </div>
         </div>
