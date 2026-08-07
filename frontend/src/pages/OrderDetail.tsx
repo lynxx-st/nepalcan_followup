@@ -337,7 +337,7 @@ export default function OrderDetail() {
           {customerPhone !== 'N/A' && (
             <button
               onClick={() => callPhone(customerPhone)}
-              className="btn-primary text-xs px-3.5 py-1.5 cursor-pointer min-h-[36px]"
+              className="btn-primary text-xs px-3.5 py-1.5 cursor-pointer min-h-[44px]"
             >
               <PhoneCall className="w-3.5 h-3.5" />
               <span>Call Customer</span>
@@ -346,7 +346,7 @@ export default function OrderDetail() {
           {vendorPhone !== 'N/A' && (
             <button
               onClick={() => callPhone(vendorPhone)}
-              className="btn-outline text-xs px-3.5 py-1.5 cursor-pointer min-h-[36px]"
+              className="btn-outline text-xs px-3.5 py-1.5 cursor-pointer min-h-[44px]"
             >
               <Store className="w-3.5 h-3.5 text-[#dc3545]" />
               <span>Call Vendor</span>
@@ -618,6 +618,38 @@ export default function OrderDetail() {
                   In Transit
                 </span>
               </div>
+              <LogisticsTimeline
+                events={order.externalStatusHistory}
+                externalLogisticsOrderId={order.externalLogisticsOrderId || order.externalNonHeavyLogisticsId}
+              />
+            </div>
+          ) : stage === 'reviewed' ? (
+            /* REVIEWED STAGE -> READ-ONLY ORDER SUMMARY (NO CONFIRMATION MODULE) */
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b border-[#e5e5e5] pb-2.5">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-[#737373] flex items-center gap-1.5">
+                  <ThumbsUp className="w-4 h-4 text-emerald-600" />
+                  Reviewed Order Summary
+                </h2>
+                <span className="badge-pill bg-emerald-600 text-white font-medium text-[10px]">
+                  Reviewed
+                </span>
+              </div>
+
+              <div className="p-3.5 bg-[#fafafa] border border-[#e5e5e5] rounded-2xl space-y-2 text-xs">
+                <div className="flex justify-between text-[#737373]"><span>Delivery Date:</span><span className="font-semibold text-[#0a0a0a]">{order.deliveredAt ? new Date(order.deliveredAt).toLocaleString() : 'N/A'}</span></div>
+                <div className="flex justify-between text-[#737373]"><span>Time to Delivery:</span><span className="font-semibold text-emerald-700">{formatDuration(order.timeToDeliveryMs)}</span></div>
+              </div>
+
+              {reviewObj.text && (
+                <div className="p-3.5 bg-[#fafafa] border border-[#e5e5e5] rounded-2xl space-y-2">
+                  <p className="text-xs font-bold text-[#0a0a0a]">Customer Review:</p>
+                  <p className="text-xs text-[#0a0a0a] italic bg-white p-2.5 rounded-xl border border-[#e5e5e5]">
+                    &ldquo;{reviewObj.text}&rdquo;
+                  </p>
+                </div>
+              )}
+
               <LogisticsTimeline
                 events={order.externalStatusHistory}
                 externalLogisticsOrderId={order.externalLogisticsOrderId || order.externalNonHeavyLogisticsId}
@@ -955,7 +987,7 @@ export default function OrderDetail() {
                   <button
                     onClick={handleMarkDone}
                     disabled={saving}
-                    className="btn-primary text-xs px-4 py-2 font-semibold cursor-pointer disabled:opacity-50 min-h-[36px]"
+                    className="btn-primary text-xs px-4 py-2 font-semibold cursor-pointer disabled:opacity-50 min-h-[44px]"
                   >
                     <PackageCheck className="w-3.5 h-3.5" />
                     <span>✓ Mark as Done</span>
@@ -985,7 +1017,7 @@ export default function OrderDetail() {
           <button
             type="submit"
             disabled={noteSaving || !noteText.trim()}
-            className="btn-primary text-xs px-4 py-1.5 cursor-pointer disabled:opacity-50 min-h-[36px]"
+            className="btn-primary text-xs px-4 py-1.5 cursor-pointer disabled:opacity-50 min-h-[44px]"
           >
             <Send className="w-3.5 h-3.5" />
             <span>Add Note</span>

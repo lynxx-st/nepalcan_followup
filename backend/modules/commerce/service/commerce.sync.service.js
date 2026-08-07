@@ -556,6 +556,7 @@ class CommerceSyncService {
       externalLogisticsOrderId: order.externalLogisticsOrderId || order.externalNonHeavyLogisticsId,
       externalCreatedAt: order.createdAt || order.updatedAt || order.lastUpdatedAt || undefined,
       externalUpdatedAt: order.updatedAt || order.updated_at || order.lastUpdatedAt,
+      review: order.review ?? existing?.review ?? existing?.customer?.review ?? null,
     };
 
     // Compute workflow fields
@@ -729,6 +730,10 @@ class CommerceSyncService {
 
     // Delivered orders
     if (['delivered', 'return delivered'].includes(os)) {
+      const review = order.review || order.customer?.review;
+      if (review && typeof review === 'object' ? (review.text || review.comment) : review) {
+        return 'reviewed';
+      }
       return 'pending_review';
     }
 

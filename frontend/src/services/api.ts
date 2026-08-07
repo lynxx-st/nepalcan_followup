@@ -74,11 +74,11 @@ function buildParams(filters: Record<string, any>): string {
 }
 
 export const analyticsApi = {
-  getOverview: () => api.get('/v1/analytics/overview'),
-  getSlaBreach: () => api.get('/v1/analytics/sla-breach'),
-  getCallOutcomes: () => api.get('/v1/analytics/call-outcomes'),
-  getAgentPerformance: () => api.get('/v1/analytics/agent-performance'),
-  getOrderLifecycle: () => api.get('/v1/analytics/order-lifecycle'),
+  getOverview: (days = 30) => api.get(`/v1/analytics/overview?days=${days}`),
+  getSlaBreach: (days = 30) => api.get(`/v1/analytics/sla-breach?days=${days}`),
+  getCallOutcomes: (days = 30) => api.get(`/v1/analytics/call-outcomes?days=${days}`),
+  getAgentPerformance: (days = 30) => api.get(`/v1/analytics/agent-performance?days=${days}`),
+  getOrderLifecycle: (days = 30) => api.get(`/v1/analytics/order-lifecycle?days=${days}`),
 };
 
 export const taskApi = {

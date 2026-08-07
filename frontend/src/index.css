@@ -226,6 +226,22 @@ button:active, a:active {
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@supports (padding-bottom: max(0px)) {
+  .fixed.bottom-0 {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.625rem);
+  }
+}
+
+@media (max-width: 767px) {
+  .btn-primary, .btn-secondary, .btn-outline, .btn-destructive, .input-blueprint {
+    min-height: 44px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-in, .animate-in-fast {
     animation: none;

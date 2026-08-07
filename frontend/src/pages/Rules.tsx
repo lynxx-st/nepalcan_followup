@@ -200,21 +200,21 @@ export default function Rules() {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => openEdit(rule)}
-                      className="p-1 text-[#737373] hover:text-[#0a0a0a] cursor-pointer"
+                      className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center text-[#737373] hover:text-[#0a0a0a] cursor-pointer"
                       title="Edit rule"
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDuplicate(rule)}
-                      className="p-1 text-[#737373] hover:text-[#0a0a0a] cursor-pointer"
+                      className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center text-[#737373] hover:text-[#0a0a0a] cursor-pointer"
                       title="Duplicate rule"
                     >
                       <Copy className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleToggle(rule._id)}
-                      className={`p-1 text-[#737373] hover:text-[#0a0a0a] cursor-pointer`}
+                      className={`p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center text-[#737373] hover:text-[#0a0a0a] cursor-pointer`}
                       title={rule.active ? 'Disable rule' : 'Enable rule'}
                     >
                       {rule.active ? (
@@ -273,7 +273,7 @@ export default function Rules() {
             <div className="bg-[#ffffff] card-blueprint p-6 max-w-lg w-full space-y-4 shadow-xl">
               <div className="flex items-center justify-between border-b border-[#e5e5e5] pb-3">
                 <h3 className="font-bold text-sm text-[#0a0a0a]">Create Task Rule</h3>
-                <button onClick={() => setShowAddModal(false)} className="p-1 text-[#737373] hover:text-[#0a0a0a] cursor-pointer">
+                <button onClick={() => setShowAddModal(false)} className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center text-[#737373] hover:text-[#0a0a0a] cursor-pointer">
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -349,7 +349,7 @@ export default function Rules() {
             <div className="bg-[#ffffff] card-blueprint p-6 max-w-lg w-full space-y-4 shadow-xl">
               <div className="flex items-center justify-between border-b border-[#e5e5e5] pb-3">
                 <h3 className="font-bold text-sm text-[#0a0a0a]">Edit Rule</h3>
-                <button onClick={handleCancelEdit} className="p-1 text-[#737373] hover:text-[#0a0a0a] cursor-pointer">
+                <button onClick={handleCancelEdit} className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center text-[#737373] hover:text-[#0a0a0a] cursor-pointer">
                   <X className="w-4 h-4" />
                 </button>
               </div>
