@@ -74,11 +74,13 @@ function buildParams(filters: Record<string, any>): string {
 }
 
 export const analyticsApi = {
-  getOverview: () => api.get('/v1/analytics/overview'),
-  getSlaBreach: () => api.get('/v1/analytics/sla-breach'),
-  getCallOutcomes: () => api.get('/v1/analytics/call-outcomes'),
-  getAgentPerformance: () => api.get('/v1/analytics/agent-performance'),
-  getOrderLifecycle: () => api.get('/v1/analytics/order-lifecycle'),
+  getOverview: (params: Record<string, any> = {}) => api.get(`/v1/analytics/overview?${buildParams(params)}`),
+  getSlaBreach: (params: Record<string, any> = {}) => api.get(`/v1/analytics/sla-breach?${buildParams(params)}`),
+  getCallOutcomes: (params: Record<string, any> = {}) => api.get(`/v1/analytics/call-outcomes?${buildParams(params)}`),
+  getAgentPerformance: (params: Record<string, any> = {}) => api.get(`/v1/analytics/agent-performance?${buildParams(params)}`),
+  getOrderLifecycle: (params: Record<string, any> = {}) => api.get(`/v1/analytics/order-lifecycle?${buildParams(params)}`),
+  getOperational: (params: Record<string, any> = {}) => api.get(`/v1/analytics/operational?${buildParams(params)}`),
+  getForecast: () => api.get('/v1/analytics/forecast'),
 };
 
 export const taskApi = {
