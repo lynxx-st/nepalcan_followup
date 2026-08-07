@@ -389,7 +389,7 @@ const CommerceOrderSchema = new mongoose.Schema({
   // ── Workflow (Computed, Indexed) ──
   workflowStage: {
     type: String,
-    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'collected_by_logistics', 'done', 'rescheduled', 'shipped', 'customer_response', 'vendor_response', 'cancelled', 'hold', 'other'],
+    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'collected_by_logistics', 'done', 'rescheduled', 'shipped', 'customer_response', 'vendor_response', 'cancelled', 'hold', 'reviewed', 'other'],
     default: 'other',
   },
   workflowPriority: {
@@ -398,6 +398,7 @@ const CommerceOrderSchema = new mongoose.Schema({
     default: 'medium',
   },
   workflowUpdatedAt: { type: Date, default: Date.now },
+  unrecoverable: { type: Boolean, default: false },
 
   // ── Contact Tracking ──
   customerCalledAt: { type: Date },

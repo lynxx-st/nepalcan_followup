@@ -18,7 +18,7 @@ import {
 const STAGE_BUNDLES = [
   {
     key: 'pre_order',
-    label: 'PRE PROCESSING',
+    label: 'Pre Processing',
     description: 'Pending initial confirmation, verification & marked done',
     segments: ['pending_confirmation', 'done'],
   },
@@ -456,7 +456,7 @@ export default function Orders() {
       </div>
 
       {/* 4 Primary Lifecycle Stage Tabs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-4 gap-3">
         {STAGE_BUNDLES.map((stage) => {
           const isActive = activeStage === stage.key;
           const count = getStageTotalCount(stage.key);
@@ -478,7 +478,7 @@ export default function Orders() {
                   {count}
                 </span>
               </div>
-              <p className="text-[11px] text-[#737373] mt-2 line-clamp-1">{stage.description}</p>
+              <p className="text-[11px] text-[#737373] mt-2 line-clamp-2">{stage.description}</p>
             </button>
           );
         })}
@@ -488,7 +488,7 @@ export default function Orders() {
       <div className="card-blueprint p-5 sm:p-6 space-y-5">
         {/* Sub-segment Filter Tabs & Search Bar */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-[#e5e5e5] pb-4">
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          <div className="flex flex-wrap items-center gap-1.5">
             {subSegments.map((seg) => {
               const Icon = seg.icon;
               const isActive = activeSegment === seg.key;
@@ -497,13 +497,13 @@ export default function Orders() {
                 <button
                   key={seg.key}
                   onClick={() => { setActiveSegment(seg.key); setPage(1); }}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-2xl text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-2xl text-xs font-medium transition-all cursor-pointer min-h-[44px] ${
                     isActive
                       ? 'bg-[#0a0a0a] text-white shadow-2xs font-semibold'
                       : 'bg-[#fafafa] text-[#737373] hover:text-[#0a0a0a] hover:bg-[#e5e5e5]'
                   }`}
                 >
-                  <Icon className="w-3.5 h-3.5" />
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
                   <span>{seg.label}</span>
                   <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
                     isActive ? 'bg-[#ffffff] text-[#0a0a0a]' : 'bg-[#e5e5e5] text-[#0a0a0a]'
@@ -613,6 +613,11 @@ export default function Orders() {
                             #{order.orderId || order.commerceOrderId}
                           </span>
                           <PriorityBadge priority={order.priority || 'medium'} showLabel={false} />
+                          {order.unrecoverable && (
+                            <span className="badge-pill bg-[#737373] text-white border border-[#737373] text-[10px] font-bold">
+                              Unrecoverable
+                            </span>
+                          )}
                           <span className="badge-pill bg-[#fff5f5] text-[#dc3545] border border-[#f8d7da] text-[10px] font-bold">
                             {order.orderStatus || 'Pending'}
                           </span>

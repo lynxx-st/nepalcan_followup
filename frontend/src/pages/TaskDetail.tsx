@@ -83,7 +83,7 @@ export default function TaskDetail() {
       <div className="card-blueprint p-6 space-y-4">
         <div className="flex items-center justify-between border-b border-[#e5e5e5] pb-4">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/today')} className="p-2 rounded-2xl bg-[#fafafa] border border-[#e5e5e5] hover:bg-[#e5e5e5] cursor-pointer">
+            <button onClick={() => navigate('/today')} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-2xl bg-[#fafafa] border border-[#e5e5e5] hover:bg-[#e5e5e5] cursor-pointer">
               <ArrowLeft className="w-4 h-4 text-[#0a0a0a]" />
             </button>
             <div>

@@ -74,13 +74,11 @@ function buildParams(filters: Record<string, any>): string {
 }
 
 export const analyticsApi = {
-  getOverview: (params: Record<string, any> = {}) => api.get(`/v1/analytics/overview?${buildParams(params)}`),
-  getSlaBreach: (params: Record<string, any> = {}) => api.get(`/v1/analytics/sla-breach?${buildParams(params)}`),
-  getCallOutcomes: (params: Record<string, any> = {}) => api.get(`/v1/analytics/call-outcomes?${buildParams(params)}`),
-  getAgentPerformance: (params: Record<string, any> = {}) => api.get(`/v1/analytics/agent-performance?${buildParams(params)}`),
-  getOrderLifecycle: (params: Record<string, any> = {}) => api.get(`/v1/analytics/order-lifecycle?${buildParams(params)}`),
-  getOperational: (params: Record<string, any> = {}) => api.get(`/v1/analytics/operational?${buildParams(params)}`),
-  getForecast: () => api.get('/v1/analytics/forecast'),
+  getOverview: (days = 30) => api.get(`/v1/analytics/overview?days=${days}`),
+  getSlaBreach: (days = 30) => api.get(`/v1/analytics/sla-breach?days=${days}`),
+  getCallOutcomes: (days = 30) => api.get(`/v1/analytics/call-outcomes?days=${days}`),
+  getAgentPerformance: (days = 30) => api.get(`/v1/analytics/agent-performance?days=${days}`),
+  getOrderLifecycle: (days = 30) => api.get(`/v1/analytics/order-lifecycle?days=${days}`),
 };
 
 export const taskApi = {

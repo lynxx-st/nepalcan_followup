@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  CheckSquare, Zap, ShoppingBag, RotateCcw, MoreHorizontal, X, LogOut,
+  CheckSquare, Zap, ShoppingBag, RotateCcw, MoreHorizontal, X, LogOut, Download,
 } from 'lucide-react';
 import { attendanceApi } from '../services/api';
 import { toast } from 'sonner';
+import { useInstallPrompt } from '../hooks/useInstallPrompt';
 
 const PRIMARY_ITEMS = [
   { to: '/today', label: 'Today', icon: CheckSquare },
@@ -29,6 +30,7 @@ export default function BottomNav() {
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
   const [attendance, setAttendance] = useState<any>(null);
+  const { canInstall, isIos, install } = useInstallPrompt();
 
   const currentUser = (() => {
     try {
@@ -148,6 +150,16 @@ export default function BottomNav() {
                 );
               })}
             </div>
+
+            {(canInstall || isIos) && (
+              <button
+                onClick={() => { install(); if (!canInstall) setMoreOpen(false); }}
+                className="flex items-center justify-center gap-2 mt-3 px-4 py-3 text-sm font-semibold rounded-2xl w-full min-h-[44px] cursor-pointer bg-[#0a0a0a] text-white"
+              >
+                <Download className="w-4 h-4" />
+                {canInstall ? 'Install App' : 'Install via browser menu → Add to Home Screen'}
+              </button>
+            )}
 
             <button
               onClick={handleLogout}

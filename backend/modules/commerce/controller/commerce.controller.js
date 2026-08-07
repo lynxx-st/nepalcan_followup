@@ -231,6 +231,7 @@ async function getSegmentCounts(req, res) {
       vendor_response: 0,
       cancelled: 0,
       hold: 0,
+      reviewed: 0,
       other: 0
     };
     
@@ -337,6 +338,8 @@ async function getOrderDetail(req, res) {
         confirmationStatus: existing.customer?.confirmationStatus || 'pending',
         vendorStatus: existing.vendor?.vendorStatus || 'unassigned',
         review: existing?.review || existing?.customer?.review,
+        workflowStage: existing.workflowStage,
+        unrecoverable: existing.unrecoverable,
         customer: (typeof existing.customer === 'object' ? existing.customer.name : existing.customer) || decodedCustName,
         customerPhone: existing.customer?.phone || existing.customerPhone || decodedCustPhone,
         vendorName: (typeof existing.vendor === 'object' ? existing.vendor.name : existing.vendor) || decodedVendName,
@@ -406,6 +409,8 @@ async function getOrderDetail(req, res) {
         confirmationStatus: existing?.customer?.confirmationStatus || 'pending',
         vendorStatus: existing?.vendor?.vendorStatus || 'unassigned',
         review: existing?.review || existing?.customer?.review,
+        workflowStage: existing?.workflowStage,
+        unrecoverable: existing?.unrecoverable,
         customer: decodedCustName,
         customerPhone: decodedCustPhone,
         vendorName: decodedVendName,
@@ -505,7 +510,7 @@ async function updateOrderPhone(req, res) {
 async function updateOrderStatus(req, res) {
   try {
     const { commerceOrderId } = req.params;
-    const { confirmationStatus, vendorStatus, orderStatus, note, review, scheduledAt } = req.body;
+    const { confirmationStatus, vendorStatus, orderStatus, note, review, scheduledAt, unrecoverable } = req.body;
 
     const existing = await CommerceOrder.findOne({ commerceOrderId });
     if (!existing) {
@@ -518,6 +523,7 @@ async function updateOrderStatus(req, res) {
     if (vendorStatus) update['vendor.vendorStatus'] = vendorStatus;
     if (orderStatus) update['commerce.orderStatus'] = orderStatus;
     if (review !== undefined) update['review'] = review;
+    if (unrecoverable !== undefined) update['unrecoverable'] = unrecoverable;
 
     const dm = deliveryMark(existing, orderStatus, existing.externalCreatedAt || existing.sla?.slaCreatedAt || existing.createdAt);
     if (dm) {
@@ -538,6 +544,7 @@ async function updateOrderStatus(req, res) {
     if (vendorStatus) historyEntry.vendorStatus = vendorStatus;
     if (orderStatus) historyEntry.orderStatus = orderStatus;
     if (review !== undefined) historyEntry.review = review;
+    if (unrecoverable !== undefined) historyEntry.unrecoverable = unrecoverable;
 
     const updated = await CommerceOrder.findOneAndUpdate(
       { commerceOrderId },

@@ -19,25 +19,29 @@ function rangeFilter(req) {
   return filter;
 }
 
+function sinceDays(req) {
+  const days = parseInt(req.query.days, 10) || 30;
+  return new Date(Date.now() - days * 86400000);
+}
+
 async function getAnalyticsOverview(req, res, next) {
   try {
-    const range = rangeFilter(req);
+    const since = sinceDays(req);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const [orderStats, stageCounts, stageRevenue, revenueResult, taskStats, taskByType, completedTasks, returnsTotal, returnsActive, breaches, avgDelivery] = await Promise.all([
-      CommerceOrder.countDocuments(range),
-      CommerceOrder.aggregate([{ $match: range }, { $group: { _id: '$workflowStage', count: { $sum: 1 } } }]),
-      CommerceOrder.aggregate([{ $match: range }, { $group: { _id: '$workflowStage', total: { $sum: '$commerce.totalAmount' } } }]),
-      CommerceOrder.aggregate([{ $match: range }, { $group: { _id: null, total: { $sum: '$commerce.totalAmount' } } }]),
-      Task.aggregate([{ $match: range }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
-      Task.aggregate([
-        { $match: range },
-        { $group: { _id: '$type', total: { $sum: 1 }, completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } } } },
-      ]),
-      Task.find({ ...range, status: 'completed' }).select('dueAt completedAt').lean(),
-      OrderReturn.countDocuments(range),
-      OrderReturn.countDocuments({ ...range, workflowStage: { $ne: 'completed' } }),
-      CommerceOrder.countDocuments({ ...range, 'sla.slaStatus': 'breached' }),
-      CommerceOrder.aggregate([{ $match: range }, { $group: { _id: null, avgMs: { $avg: '$timeToDeliveryMs' } } }]),
+    const [orderStats, stageCounts, revenueResult, taskStats, completedTasks, returnsTotal, returnsActive, breaches, avgDelivery] = await Promise.all([
+      CommerceOrder.countDocuments({ createdAt: { $gte: since } }),
+      CommerceOrder.aggregate([{ $match: { createdAt: { $gte: since } } }, { $group: { _id: '$workflowStage', count: { $sum: 1 } } }]),
+      CommerceOrder.aggregate([{ $match: { createdAt: { $gte: since } } }, { $group: { _id: null, total: { $sum: '$commerce.totalAmount' } } }]),
+      Task.aggregate([{ $match: { createdAt: { $gte: since } } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Task.find({ status: 'completed', createdAt: { $gte: since } }).select('dueAt completedAt').lean(),
+      OrderReturn.countDocuments({ createdAt: { $gte: since } }),
+      OrderReturn.countDocuments({ workflowStage: { $ne: 'completed' }, createdAt: { $gte: since } }),
+      CommerceOrder.countDocuments({ 'sla.slaStatus': 'breached', createdAt: { $gte: since } }),
+      CommerceOrder.aggregate([{ $match: { createdAt: { $gte: since } } }, { $group: { _id: null, avgMs: { $avg: '$timeToDeliveryMs' } } }]),
     ]);
 
     const byStage = {};
@@ -75,21 +79,20 @@ async function getAnalyticsOverview(req, res, next) {
 
 async function getAnalyticsSlaBreach(req, res, next) {
   try {
-    const range = rangeFilter(req);
-    const match = { ...range, 'sla.slaStatus': 'breached' };
-
+    const since = sinceDays(req);
+    const range = { createdAt: { $gte: since } };
     const [total, byStage, byZone, amountResult] = await Promise.all([
-      CommerceOrder.countDocuments(match),
+      CommerceOrder.countDocuments({ 'sla.slaStatus': 'breached', ...range }),
       CommerceOrder.aggregate([
-        { $match: match },
+        { $match: { 'sla.slaStatus': 'breached', ...range } },
         { $group: { _id: '$workflowStage', count: { $sum: 1 } } },
       ]),
       CommerceOrder.aggregate([
-        { $match: match },
+        { $match: { 'sla.slaStatus': 'breached', ...range } },
         { $group: { _id: '$deliveryZone', count: { $sum: 1 } } },
       ]),
       CommerceOrder.aggregate([
-        { $match: match },
+        { $match: { 'sla.slaStatus': 'breached', ...range } },
         { $group: { _id: null, amount: { $sum: '$commerce.totalAmount' } } },
       ]),
     ]);
@@ -115,9 +118,9 @@ async function getAnalyticsSlaBreach(req, res, next) {
 
 async function getAnalyticsCallOutcomes(req, res, next) {
   try {
-    const range = rangeFilter(req);
+    const since = sinceDays(req);
     const outcomes = await CallLog.aggregate([
-      { $match: range },
+      { $match: { createdAt: { $gte: since } } },
       {
         $group: {
           _id: '$outcome',
@@ -138,10 +141,10 @@ async function getAnalyticsCallOutcomes(req, res, next) {
 
 async function getAnalyticsAgentPerformance(req, res, next) {
   try {
-    const range = rangeFilter(req);
+    const since = sinceDays(req);
     const [taskStats, callStats] = await Promise.all([
       Task.aggregate([
-        { $match: range },
+        { $match: { createdAt: { $gte: since } } },
         {
           $group: {
             _id: '$assigneeName',
@@ -163,7 +166,7 @@ async function getAnalyticsAgentPerformance(req, res, next) {
         { $match: { _id: { $ne: null } } },
       ]),
       CallLog.aggregate([
-        { $match: range },
+        { $match: { createdAt: { $gte: since } } },
         {
           $lookup: {
             from: 'admins',
@@ -221,13 +224,13 @@ function bundleOf(cs, vs, orderStatus) {
 
 async function getAnalyticsOrderLifecycle(req, res, next) {
   try {
-    const range = rangeFilter(req);
+    const since = sinceDays(req);
     const [orders, returns] = await Promise.all([
-      CommerceOrder.find({ ...range, statusHistory: { $exists: true, $ne: [] } })
+      CommerceOrder.find({ statusHistory: { $exists: true, $ne: [] }, createdAt: { $gte: since } })
         .select('createdAt workflowUpdatedAt deliveredAt statusHistory customer confirmationStatus vendor vendorStatus commerce.orderStatus')
         .lean(),
       OrderReturn.aggregate([
-        { $match: range },
+        { $match: { createdAt: { $gte: since } } },
         {
           $group: {
             _id: '$workflowStage',

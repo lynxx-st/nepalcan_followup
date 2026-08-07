@@ -305,7 +305,7 @@ export default function NextCall() {
 
       <div className="card-blueprint p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/today')} className="p-2 rounded-2xl bg-[#fafafa] border border-[#e5e5e5] hover:bg-[#e5e5e5] cursor-pointer">
+          <button onClick={() => navigate('/today')} className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-2xl bg-[#fafafa] border border-[#e5e5e5] hover:bg-[#e5e5e5] cursor-pointer">
             <ArrowLeft className="w-4 h-4 text-[#0a0a0a]" />
           </button>
           <div>
@@ -317,7 +317,7 @@ export default function NextCall() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setView('list')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-medium transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] rounded-2xl text-xs font-medium transition-all cursor-pointer ${
               view === 'list' ? 'bg-[#0a0a0a] text-white' : 'bg-[#fafafa] text-[#737373] hover:text-[#0a0a0a]'
             }`}
           >
@@ -326,7 +326,7 @@ export default function NextCall() {
           </button>
           <button
             onClick={() => setView('swipe')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-medium transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] rounded-2xl text-xs font-medium transition-all cursor-pointer ${
               view === 'swipe' ? 'bg-[#0a0a0a] text-white' : 'bg-[#fafafa] text-[#737373] hover:text-[#0a0a0a]'
             }`}
           >
@@ -422,9 +422,9 @@ export default function NextCall() {
                   <div className="flex items-center justify-between pt-2 border-t border-[#f5f5f5]">
                     {task.dueAt && <SLACountdown dueAt={task.dueAt} />}
                     <div className="flex gap-1">
-                      <button onClick={() => handleComplete(task._id)} className="p-2 rounded-xl hover:bg-[#f0fdf4] text-emerald-700 cursor-pointer"><Check className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => handleSkip(task._id)} className="p-2 rounded-xl hover:bg-[#fef2f2] text-rose-700 cursor-pointer"><SkipForward className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => navigate(`/tasks/${task._id}`)} className="p-2 rounded-xl hover:bg-[#fafafa] text-[#0a0a0a] cursor-pointer"><Eye className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => handleComplete(task._id)} className="p-2 w-[44px] h-[44px] flex items-center justify-center rounded-xl hover:bg-[#f0fdf4] text-emerald-700 cursor-pointer"><Check className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => handleSkip(task._id)} className="p-2 w-[44px] h-[44px] flex items-center justify-center rounded-xl hover:bg-[#fef2f2] text-rose-700 cursor-pointer"><SkipForward className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => navigate(`/tasks/${task._id}`)} className="p-2 w-[44px] h-[44px] flex items-center justify-center rounded-xl hover:bg-[#fafafa] text-[#0a0a0a] cursor-pointer"><Eye className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
                 </div>

@@ -6,7 +6,7 @@ import { entityName } from '../utils/order';
 import Breadcrumbs from '../components/Breadcrumbs';
 import {
   PhoneCall, CheckCircle2, XCircle, PhoneOff, User, ArrowLeft,
-  X, FileText, Send, ShoppingBag, Package, RotateCcw,
+  X, FileText, Send, ShoppingBag, Package, RotateCcw, Ban,
 } from 'lucide-react';
 
 const callPhone = (phone: string) => { window.location.href = `tel:${phone}`; };
@@ -94,6 +94,24 @@ export default function OrderCancelled() {
     }
   };
 
+  const handleMarkUnrecoverable = async () => {
+    setSaving(true);
+    try {
+      await commerceApi.updateStatus(commerceOrderId!, {
+        unrecoverable: true,
+        note: 'Marked as unrecoverable — no further recovery attempts',
+      });
+      toast.success('Order marked unrecoverable');
+      await fetchDetail();
+      await fetchCampaign();
+    } catch (err) {
+      console.error('Failed to mark unrecoverable', err);
+      toast.error('Failed to save status');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!noteText.trim() || !commerceOrderId) return;
@@ -169,7 +187,9 @@ export default function OrderCancelled() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-bold text-[#0a0a0a] tracking-tight">Order #{order.orderId || order.commerceOrderId}</h1>
-              <span className="badge-pill bg-[#e7000b] text-white text-[11px] font-semibold uppercase">Cancelled</span>
+              <span className={`badge-pill text-[11px] font-semibold uppercase ${order.unrecoverable ? 'bg-[#737373] text-white border border-[#737373]' : 'bg-[#e7000b] text-white'}`}>
+                {order.unrecoverable ? 'Unrecoverable' : 'Cancelled'}
+              </span>
             </div>
             <p className="text-[12px] text-[#737373] mt-0.5 font-medium">
               Created {new Date(order.createdAt || Date.now()).toLocaleDateString()} · Payment: <span className="font-semibold text-[#0a0a0a]">{order.paymentMethod || 'COD'} ({order.paymentStatus || 'Pending'})</span>
@@ -178,7 +198,7 @@ export default function OrderCancelled() {
         </div>
 
         {customerPhone !== 'N/A' && (
-          <button onClick={() => callPhone(customerPhone)} className="btn-primary text-xs px-3.5 py-1.5 cursor-pointer min-h-[36px]">
+          <button onClick={() => callPhone(customerPhone)} className="btn-primary text-xs px-3.5 py-1.5 cursor-pointer min-h-[44px]">
             <User className="w-3.5 h-3.5" />
             <span>Call Customer</span>
           </button>
@@ -286,13 +306,30 @@ export default function OrderCancelled() {
                     key={out.value}
                     onClick={() => handleCustomerOutcome(out.value)}
                     disabled={saving}
-                    className={`${out.cls} text-xs font-medium px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1 min-h-[36px]`}
+                    className={`${out.cls} text-xs font-medium px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1 min-h-[44px]`}
                   >
                     <Icon className="w-3.5 h-3.5" />
                     <span>{out.label}</span>
                   </button>
                 );
               })}
+            </div>
+
+            <div className="pt-2 border-t border-[#e5e5e5]">
+              {order.unrecoverable ? (
+                <p className="text-[11px] text-[#737373] bg-[#f5f5f5] border border-[#e5e5e5] rounded-xl p-2">
+                  This order is marked <span className="font-bold text-[#0a0a0a]">unrecoverable</span>. No further recovery attempts will be made.
+                </p>
+              ) : (
+                <button
+                  onClick={handleMarkUnrecoverable}
+                  disabled={saving}
+                  className="btn-outline text-xs px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1 min-h-[44px] text-[#737373] hover:bg-[#f5f5f5]"
+                >
+                  <Ban className="w-3.5 h-3.5" />
+                  <span>Mark Unrecoverable</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -306,7 +343,7 @@ export default function OrderCancelled() {
         </h3>
         <form onSubmit={handleAddNote} className="flex gap-2">
           <input type="text" value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Type note or call summary..." className="input-blueprint flex-1 text-xs" />
-          <button type="submit" disabled={noteSaving || !noteText.trim()} className="btn-primary text-xs px-4 py-1.5 cursor-pointer disabled:opacity-50 min-h-[36px]">
+          <button type="submit" disabled={noteSaving || !noteText.trim()} className="btn-primary text-xs px-4 py-1.5 cursor-pointer disabled:opacity-50 min-h-[44px]">
             <Send className="w-3.5 h-3.5" />
             <span>Add Note</span>
           </button>

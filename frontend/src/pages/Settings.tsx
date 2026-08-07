@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { settingsApi } from '../services/api';
-import { Settings, Save, Truck, MessageSquare, Clock, Globe } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Truck } from 'lucide-react';
 
 const FIELDS = [
-  { key: 'logisticsFollowupHours', label: 'Logistics Follow-up Hours', desc: 'Hours after which a Processing order with no logistics pickup gets a logistics-followup task', type: 'number' },
+  { key: 'logisticsFollowupHours', label: 'Logistics Follow-up Hours', desc: 'Hours after which a logistics followup task is created for a non-picked-up processing order', type: 'number' },
   { key: 'logisticsFollowupSlaMinutes', label: 'Logistics Follow-up SLA (min)', desc: 'SLA in minutes for logistics followup tasks. Past this = overdue.', type: 'number' },
   { key: 'customerConfirmationSlaMinutes', label: 'Customer Confirmation SLA (min)', desc: 'Customer confirmation task must be completed within this time. Past this = overdue.', type: 'number' },
   { key: 'vendorCallSlaMinutes', label: 'Vendor Call SLA (min)', desc: 'Vendor call task must be completed within this time. Past this = overdue.', type: 'number' },
@@ -14,9 +14,9 @@ const FIELDS = [
   { key: 'returnCustomerResponseSlaMinutes', label: 'Return Customer Response SLA (min)', desc: 'SLA in minutes for contacting customer after return request is initiated.', type: 'number' },
   { key: 'returnVendorResponseSlaMinutes', label: 'Return Vendor Response SLA (min)', desc: 'SLA in minutes for obtaining vendor response/approval for return.', type: 'number' },
   { key: 'escalationSlaMinutes', label: 'Escalation SLA (min)', desc: 'SLA in minutes for escalation tasks.', type: 'number' },
-  { key: 'priorityAmountThreshold', label: 'Priority Amount Threshold (Rs)', desc: 'Orders with total amount above this Rs value get priority bumped one level (e.g. medium → high).', type: 'number' },
+  { key: 'priorityAmountThreshold', label: 'Priority Amount Threshold (Rs)', desc: 'Orders with total amount above this value get priority bumped one level (e.g. medium → high).', type: 'number' },
   { key: 'shippedSlaFromCreationHours', label: 'Shipped SLA — From Creation (hours)', desc: 'SLA hours for shipped orders starting from order creation time.', type: 'number' },
-  { key: 'shippedSlaFromPickupHours', label: 'Shipped SLA — From Pickup Collected (hours)', desc: 'SLA hours for shipped non-heavy logistics orders starting from pickup collected time.', type: 'number' },
+  { key: 'shippedSlaFromPickupHours', label: 'Shipped SLA — From Pickup Collected (hours)', desc: 'SLA hours for shipped non-heavy logistics orders after pickup collected.', type: 'number' },
   { key: 'commerceApiBase', label: 'Commerce API Base URL', desc: 'Base URL for the external commerce API (e.g. https://commerce.thecanbrand.com/api). Used for logistics comments and delivery zone group fetching.', type: 'text' },
   { key: 'commentSlaThresholdMinutes', label: 'Comment SLA Threshold (min)', desc: 'Minutes after which the SLA is considered breached and the comment button appears on shipped orders.', type: 'number' },
 ];
@@ -49,59 +49,73 @@ export default function SettingsPage() {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64 text-slate-500 text-lg">Loading settings...</div>;
+    return <div className="flex items-center justify-center h-64 text-[#737373] text-lg">Loading settings...</div>;
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-in">
-      <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 text-white rounded-2xl p-6 border border-indigo-500 shadow-lg">
+    <div className="max-w-3xl mx-auto space-y-6 animate-in pb-16 sm:pb-0">
+      <div className="card-blueprint p-6">
         <div className="flex items-center gap-3">
-          <Settings className="w-6 h-6" />
+          <span className="w-11 h-11 rounded-2xl bg-[#0a0a0a] text-white flex items-center justify-center shrink-0">
+            <SettingsIcon className="w-5 h-5" />
+          </span>
           <div>
-            <h1 className="text-2xl font-black">System Settings</h1>
-            <p className="text-sm text-indigo-200 mt-1">Configure follow-up rules, SLAs, and thresholds. Changes apply on next sync.</p>
+            <h1 className="text-xl font-bold text-[#0a0a0a]">System Settings</h1>
+            <p className="text-xs text-[#737373] mt-1">Configure follow-up rules, SLAs, and thresholds. Changes apply on next sync.</p>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
-        <div className="border-b border-slate-200 pb-4">
-          <h2 className="text-lg font-bold text-slate-900">Delivery Zones</h2>
-          <p className="text-xs text-slate-500 mt-1">Branch lists are fetched from the commerce API at setup (seed). SLA hours apply to shipped orders per zone.</p>
+      <section className="card-blueprint p-6 space-y-6">
+        <div className="border-b border-[#e5e5e5] pb-4">
+          <h2 className="text-lg font-bold text-[#0a0a0a] flex items-center gap-2">
+            <Truck className="w-4 h-4 text-[#737373]" />
+            Delivery Zones
+          </h2>
+          <p className="text-xs text-[#737373] mt-1">Branch lists are fetched from the commerce API at setup (seed). SLA hours apply to shipped orders per zone.</p>
         </div>
-        {(Array.isArray(values.deliveryZones) ? values.deliveryZones : []).map((zone) => (
-          <div key={zone.key} className="border border-slate-200 rounded-xl p-4 space-y-3">
+        {(Array.isArray(values.deliveryZones) ? values.deliveryZones : []).map((zone: any) => (
+          <div key={zone.key} className="border border-[#e5e5e5] rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <label className="block text-sm font-bold text-slate-900">{zone.label}</label>
-              <span className="text-xs text-slate-500">{Array.isArray(zone.branches) ? zone.branches.length : 0} branches</span>
+              <span className="text-sm font-bold text-[#0a0a0a]">{zone.label}</span>
+              <span className="text-xs text-[#737373]">{Array.isArray(zone.branches) ? zone.branches.length : 0} branches</span>
             </div>
             <div>
-              <p className="text-xs text-slate-500 mb-1">Expected delivery SLA (hours)</p>
-              <input type="number" value={zone.slaHours ?? ''} onChange={(e) => setValues(v => ({ ...v, deliveryZones: (v.deliveryZones || []).map(z => z.key === zone.key ? { ...z, slaHours: Number(e.target.value) } : z) }))}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+              <p className="text-xs text-[#737373] mb-1">Expected delivery SLA (hours)</p>
+              <input
+                type="number"
+                value={zone.slaHours ?? ''}
+                onChange={(e) => setValues((v: any) => ({
+                  ...v,
+                  deliveryZones: (v.deliveryZones || []).map((z: any) => z.key === zone.key ? { ...z, slaHours: Number(e.target.value) } : z),
+                }))}
+                className="input-blueprint w-full"
+              />
             </div>
           </div>
         ))}
-      </div>
+      </section>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+      <section className="card-blueprint p-6 space-y-6">
         {FIELDS.map((field) => (
           <div key={field.key}>
-            <label className="block text-sm font-bold text-slate-900 mb-1">{field.label}</label>
-            <p className="text-xs text-slate-500 mb-2">{field.desc}</p>
-            <input type={field.type} value={values[field.key] ?? ''} onChange={(e) => setValues(v => ({ ...v, [field.key]: field.type === 'number' ? Number(e.target.value) : e.target.value }))}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+            <label className="block text-sm font-bold text-[#0a0a0a] mb-1">{field.label}</label>
+            <p className="text-xs text-[#737373] mb-2">{field.desc}</p>
+            <input
+              type={field.type}
+              value={values[field.key] ?? ''}
+              onChange={(e) => setValues((v: any) => ({ ...v, [field.key]: field.type === 'number' ? Number(e.target.value) : e.target.value }))}
+              className="input-blueprint w-full"
+            />
           </div>
         ))}
+      </section>
 
-        <div className="pt-4 border-t border-slate-200">
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-md transition-all disabled:opacity-50 cursor-pointer w-full sm:w-auto">
-            <Save className="w-4 h-4" />
-            {saving ? 'Saving...' : 'Save Settings'}
-          </button>
-        </div>
-      </div>
+      <button onClick={handleSave} disabled={saving}
+        className="btn-primary w-full py-4 disabled:opacity-50 cursor-pointer">
+        <Save className="w-4 h-4" />
+        {saving ? 'Saving...' : 'Save Settings'}
+      </button>
     </div>
   );
 }

@@ -99,7 +99,7 @@ export default function Returns() {
       </div>
 
       {/* Workflow Tabs */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-3">
         <button
           onClick={() => { setActiveStage('customer_response'); setPage(1); }}
           className={`card-blueprint p-4 text-left transition-all cursor-pointer ${
@@ -267,7 +267,7 @@ export default function Returns() {
                     <span className="text-[11px] font-bold text-[#737373] uppercase tracking-wider">Follow up:</span>
                     <button
                       onClick={() => ret.followUpOrder !== 'customer_first' && handleUpdateStatus(ret._id, { followUpOrder: 'customer_first' })}
-                      className={`text-xs px-3 py-1.5 rounded-xl border cursor-pointer font-semibold min-h-[36px] ${
+                      className={`text-xs px-3 py-1.5 rounded-xl border cursor-pointer font-semibold min-h-[44px] ${
                         ret.followUpOrder === 'customer_first'
                           ? 'bg-[#0a0a0a] text-white border-[#0a0a0a]'
                           : 'bg-[#f5f5f5] text-[#0a0a0a] border-[#e5e5e5]'
@@ -278,7 +278,7 @@ export default function Returns() {
                     </button>
                     <button
                       onClick={() => ret.followUpOrder !== 'vendor_first' && handleUpdateStatus(ret._id, { followUpOrder: 'vendor_first' })}
-                      className={`text-xs px-3 py-1.5 rounded-xl border cursor-pointer font-semibold min-h-[36px] ${
+                      className={`text-xs px-3 py-1.5 rounded-xl border cursor-pointer font-semibold min-h-[44px] ${
                         ret.followUpOrder === 'vendor_first'
                           ? 'bg-[#0a0a0a] text-white border-[#0a0a0a]'
                           : 'bg-[#f5f5f5] text-[#0a0a0a] border-[#e5e5e5]'

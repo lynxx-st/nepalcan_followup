@@ -17,6 +17,7 @@ frontend/tests/.auth/
 Thumbs.db
 desktop.ini
 *.tmp
+.env
 
 # Office temp lock files
 ~$*.docx

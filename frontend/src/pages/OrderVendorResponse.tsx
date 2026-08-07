@@ -152,7 +152,7 @@ export default function OrderVendorResponse() {
 
         <div className="flex items-center gap-2">
           {vendorPhone !== 'N/A' && (
-            <button onClick={() => callPhone(vendorPhone)} className="btn-primary text-xs px-3.5 py-1.5 cursor-pointer min-h-[36px]">
+            <button onClick={() => callPhone(vendorPhone)} className="btn-primary text-xs px-3.5 py-1.5 cursor-pointer min-h-[44px]">
               <Store className="w-3.5 h-3.5" />
               <span>Call Vendor</span>
             </button>
@@ -283,7 +283,7 @@ export default function OrderVendorResponse() {
         </h3>
         <form onSubmit={handleAddNote} className="flex gap-2">
           <input type="text" value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Type note or call summary..." className="input-blueprint flex-1 text-xs" />
-          <button type="submit" disabled={noteSaving || !noteText.trim()} className="btn-primary text-xs px-4 py-1.5 cursor-pointer disabled:opacity-50 min-h-[36px]">
+          <button type="submit" disabled={noteSaving || !noteText.trim()} className="btn-primary text-xs px-4 py-1.5 cursor-pointer disabled:opacity-50 min-h-[44px]">
             <Send className="w-3.5 h-3.5" />
             <span>Add Note</span>
           </button>
