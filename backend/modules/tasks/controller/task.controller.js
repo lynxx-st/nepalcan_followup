@@ -1,4 +1,4 @@
-const { Task } = require('../../../database/models');
+const { Task, Admin } = require('../../../database/models');
 const {
   createTaskSchema,
   updateTaskSchema,
@@ -78,6 +78,61 @@ async function listTasks(req, res, next) {
   }
 }
 
+async function getAssignedToMe(req, res, next) {
+  try {
+    const result = await taskService.listTasks({
+      assigneeId: req.userId,
+      status: req.query.status,
+      page: Number(req.query.page) || 1,
+      limit: Number(req.query.limit) || 50,
+      sortBy: req.query.sortBy || 'createdAt',
+      sortDir: req.query.sortDir || 'desc',
+    });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getWorkload(req, res, next) {
+  try {
+    const [byAssignee, unassigned, admins] = await Promise.all([
+      Task.aggregate([
+        { $match: { status: { $in: ['pending', 'in-progress', 'overdue'] } } },
+        { $group: { _id: '$assigneeId', active: { $sum: 1 } } },
+      ]),
+      Task.countDocuments({
+        status: { $in: ['pending', 'in-progress', 'overdue'] },
+        assigneeId: null,
+      }),
+      Admin.find({ isActive: true, role: { $ne: 'super-admin' } })
+        .select('name email team')
+        .lean(),
+    ]);
+
+    const agents = [];
+    for (const row of byAssignee) {
+      const admin = admins.find((a) => String(a._id) === String(row._id));
+      agents.push({
+        assigneeId: row._id,
+        name: admin ? admin.name || admin.email : 'Unknown',
+        team: admin ? admin.team || '' : '',
+        active: row.active,
+      });
+    }
+    for (const admin of admins) {
+      if (!agents.some((a) => String(a.assigneeId) === String(admin._id))) {
+        agents.push({ assigneeId: admin._id, name: admin.name || admin.email, team: admin.team || '', active: 0 });
+      }
+    }
+    agents.sort((a, b) => b.active - a.active);
+
+    res.json({ success: true, data: { agents, unassigned } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function assignTask(req, res, next) {
   try {
     const updated = await taskService.assignTask(req.params.id, req.validatedBody);
@@ -138,6 +193,16 @@ async function getNextTask(req, res, next) {
   }
 }
 
+async function getNextAdvanced(req, res, next) {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 1, 50);
+    const result = await taskService.getNextAdvanced(req.query.assigneeId || req.user?.userId, limit);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function scheduleTask(req, res, next) {
   try {
     const { scheduledDate } = req.body;
@@ -165,12 +230,15 @@ module.exports = {
   getTaskById,
   addNote,
   listTasks,
+  getAssignedToMe,
+  getWorkload,
   assignTask,
   completeTask,
   skipTask,
   updateTask,
   deleteTask,
   getNextTask,
+  getNextAdvanced,
   scheduleTask,
   getTasksByOrder,
 };

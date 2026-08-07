@@ -73,6 +73,14 @@ function buildParams(filters: Record<string, any>): string {
   return params.toString();
 }
 
+export const analyticsApi = {
+  getOverview: () => api.get('/v1/analytics/overview'),
+  getSlaBreach: () => api.get('/v1/analytics/sla-breach'),
+  getCallOutcomes: () => api.get('/v1/analytics/call-outcomes'),
+  getAgentPerformance: () => api.get('/v1/analytics/agent-performance'),
+  getOrderLifecycle: () => api.get('/v1/analytics/order-lifecycle'),
+};
+
 export const taskApi = {
   create: (data: any) => api.post('/v1/tasks', data),
   list: (filters: Record<string, any> = {}) => {
@@ -80,6 +88,7 @@ export const taskApi = {
   },
   getById: (id: string) => api.get(`/v1/tasks/${id}`),
   getNext: () => api.get('/v1/tasks/next'),
+  getNextAdvanced: (limit?: number) => api.get(`/v1/tasks/next-advanced${limit ? `?limit=${limit}` : ''}`),
   assign: (id: string, data: any) => api.put(`/v1/tasks/${id}/assign`, data),
   complete: (id: string, data: any) => api.put(`/v1/tasks/${id}/complete`, data),
   skip: (id: string, data: any) => api.put(`/v1/tasks/${id}/skip`, data),
@@ -153,6 +162,14 @@ export const commerceApi = {
     invalidateCache('getDetail');
     return api.put(`/v1/commerce/orders/${id}/status`, data);
   },
+  getExternalComments: (id: string) => api.get(`/v1/commerce/orders/${id}/comments`),
+  postExternalComment: (id: string, comments: string) => {
+    invalidateCache('getDetail');
+    return api.post(`/v1/commerce/orders/${id}/comment`, { comments });
+  },
+  getReturns: (filters: Record<string, any> = {}) => api.get(`/v1/commerce/returns?${buildParams(filters)}`),
+  updateReturnStatus: (returnId: string, data: Record<string, any>) => api.put(`/v1/commerce/returns/${returnId}/status`, data),
+  syncReturns: () => api.post('/v1/commerce/sync/returns'),
 };
 
 export const noteApi = {
@@ -175,6 +192,12 @@ export const adminApi = {
   updateUser: (id: string, data: Record<string, any>) => api.patch(`/v1/admin/users/${id}`, data),
   resetPassword: (id: string, password: string) => api.post(`/v1/admin/users/${id}/reset-password`, { password }),
   listBranches: () => api.get('/v1/admin/branches'),
+};
+
+export const attendanceApi = {
+  getStatus: () => api.get('/v1/attendance/status'),
+  checkIn: (notes?: string) => api.post('/v1/attendance/check-in', { notes }),
+  checkOut: (notes?: string) => api.post('/v1/attendance/check-out', { notes }),
 };
 
 export default api;

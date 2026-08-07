@@ -6,7 +6,10 @@ const { validate } = require('../../../src/middleware/validate');
 
 router.post('/', authenticate, validate(require('../validation/task.schema').createTaskSchema), taskController.createTask);
 router.get('/next', authenticate, taskController.getNextTask);
+router.get('/next-advanced', authenticate, taskController.getNextAdvanced);
 router.get('/today-summary', authenticate, taskController.listTasks);
+router.get('/assigned-to-me', authenticate, taskController.getAssignedToMe);
+router.get('/workload', authenticate, taskController.getWorkload);
 router.get('/by-order/:orderId', authenticate, taskController.getTasksByOrder);
 router.get('/:id', authenticate, taskController.getTaskById);
 router.post('/:id/notes', authenticate, taskController.addNote);

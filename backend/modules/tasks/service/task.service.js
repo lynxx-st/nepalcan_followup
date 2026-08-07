@@ -1,5 +1,6 @@
-const { Task, TaskTimeline, CommerceOrder } = require('../../../database/models');
+const { Task, TaskTimeline, CommerceOrder, OrderReturn } = require('../../../database/models');
 const { NotFoundError } = require('../../../src/middleware/errorHandler');
+const { scoreNextTask } = require('../../../utils/next-call-scorer');
 
 const PRIORITY_SCORE = { critical: 4, high: 3, medium: 2, low: 1 };
 
@@ -207,6 +208,44 @@ class TaskService {
       { $limit: 1 },
     ]);
     return task || null;
+  }
+
+  async getNextAdvanced(assigneeId, limit = 1) {
+    const assigneeMatch = assigneeId
+      ? [{ assigneeId }, { assigneeId: null }, { assigneeId: { $exists: false } }]
+      : [{ assigneeId: null }, { assigneeId: { $exists: false } }];
+    const closed = await this.getClosedOrderIds();
+    const orderMatch = closed.length
+      ? { 'sourceOrder.orderId': { $nin: closed } }
+      : {};
+    const candidates = await Task.find({
+      $or: assigneeMatch,
+      status: { $in: ['pending', 'overdue'] },
+      ...orderMatch,
+    }).lean();
+
+    if (candidates.length === 0) return { task: null, score: 0, factors: {} };
+
+    const orderIds = [...new Set(candidates.map((t) => String(t.orderId || t.sourceOrder?.orderId)).filter(Boolean))];
+    const [orders, returns, loadRows] = await Promise.all([
+      orderIds.length ? CommerceOrder.find({ commerceOrderId: { $in: orderIds } }).lean() : [],
+      orderIds.length ? OrderReturn.find({ commerceOrderId: { $in: orderIds }, workflowStage: { $ne: 'completed' } }).lean() : [],
+      Task.aggregate([
+        { $match: { status: { $in: ['pending', 'in-progress', 'overdue'] }, assigneeId: { $ne: null } } },
+        { $group: { _id: '$assigneeId', n: { $sum: 1 } } },
+      ]),
+    ]);
+    const ordersById = new Map(orders.map((o) => [String(o.commerceOrderId), o]));
+    const returnsByOrderId = new Set(returns.map((r) => String(r.commerceOrderId)));
+    const agentLoads = new Map(loadRows.map((l) => [String(l._id), l.n]));
+    const now = Date.now();
+
+    const scored = candidates.map((task) => ({
+      task,
+      ...scoreNextTask(task, { ordersById, returnsByOrderId, agentLoads, now }),
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit)[0];
   }
 
   async getTodaySummary(assigneeId) {

@@ -16,8 +16,13 @@ router.get('/reviews', authenticate, commerceController.getReviews);
 router.get('/orders/:commerceOrderId', authenticate, commerceController.getOrderById);
 router.get('/orders/:commerceOrderId/status', authenticate, commerceController.getOrderStatus);
 router.get('/orders/:commerceOrderId/detail', authenticate, commerceController.getOrderDetail);
+router.get('/orders/:commerceOrderId/comments', authenticate, commerceController.getExternalComments);
+router.post('/orders/:commerceOrderId/comment', authenticate, commerceController.postExternalComment);
 router.put('/orders/:commerceOrderId/phone', authenticate, commerceController.updateOrderPhone);
 router.put('/orders/:commerceOrderId/status', authenticate, commerceController.updateOrderStatus);
-router.post('/orders/:commerceOrderId/notes', authenticate, commerceController.addOrderNote);
+router.get('/returns', authenticate, commerceController.getReturns);
+router.get('/returns/attachment', authenticate, commerceController.getReturnAttachment);
+router.put('/returns/:returnId/status', authenticate, commerceController.updateReturnStatus);
+router.post('/sync/returns', authenticate, internalLimiter, commerceController.syncReturns);
 
 module.exports = router;

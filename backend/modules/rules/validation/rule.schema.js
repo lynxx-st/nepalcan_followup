@@ -32,6 +32,8 @@ const createRuleSchema = Joi.object({
   priority: Joi.string().valid('critical', 'high', 'medium', 'low').default('medium'),
   slaMinutes: Joi.number().integer().min(0).default(0),
   active: Joi.boolean().default(true),
+  assigneeId: Joi.string().optional(),
+  team: Joi.string().allow('').optional(),
 });
 
 const updateRuleSchema = Joi.object({
@@ -62,6 +64,8 @@ const updateRuleSchema = Joi.object({
   priority: Joi.string().valid('critical', 'high', 'medium', 'low').optional(),
   slaMinutes: Joi.number().integer().min(0).optional(),
   active: Joi.boolean().optional(),
+  assigneeId: Joi.string().optional(),
+  team: Joi.string().allow('').optional(),
 });
 
 module.exports = { createRuleSchema, updateRuleSchema };

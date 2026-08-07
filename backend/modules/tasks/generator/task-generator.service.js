@@ -1,6 +1,34 @@
-const { TaskRule, Task } = require('../../../database/models');
+const { TaskRule, Task, Admin } = require('../../../database/models');
 const taskService = require('../service/task.service');
 const { matchesCondition, buildReason } = require('../../../utils/rule-utils');
+
+function pickLowestLoad(members, loadMap) {
+  return members.reduce((best, m) => {
+    const load = loadMap.get(String(m._id)) || 0;
+    const bestLoad = loadMap.get(String(best._id)) || 0;
+    return load < bestLoad ? m : best;
+  }, members[0]);
+}
+
+async function resolveAssignee(rule) {
+  if (!rule.assigneeId && !rule.team) return null;
+  if (rule.assigneeId) {
+    const admin = await Admin.findById(rule.assigneeId).select('name email').lean();
+    if (!admin) return null;
+    return { assigneeId: admin._id, assigneeName: admin.name || admin.email || '' };
+  }
+  const members = await Admin.find({ team: rule.team, isActive: true, role: { $ne: 'super-admin' } })
+    .select('_id name email')
+    .lean();
+  if (members.length === 0) return null;
+  const loads = await Task.aggregate([
+    { $match: { assigneeId: { $in: members.map((m) => m._id) }, status: { $in: ['pending', 'in-progress', 'overdue'] } } },
+    { $group: { _id: '$assigneeId', n: { $sum: 1 } } },
+  ]);
+  const loadMap = new Map(loads.map((l) => [String(l._id), l.n]));
+  const pick = pickLowestLoad(members, loadMap);
+  return { assigneeId: pick._id, assigneeName: pick.name || pick.email || '' };
+}
 
 function buildCommerceReason(taskType, orderData) {
   const lines = [];
@@ -68,6 +96,7 @@ class TaskGeneratorService {
         });
         if (existing) continue;
 
+        const assignment = await resolveAssignee(rule);
         const taskData = {
           type: taskType,
           priority: priorityOverride || rule.priority,
@@ -87,6 +116,10 @@ class TaskGeneratorService {
             source: 'commerce-sync',
           },
         };
+        if (assignment) {
+          taskData.assigneeId = assignment.assigneeId;
+          taskData.assigneeName = assignment.assigneeName;
+        }
 
         if (orderData.customerId) {
           taskData.orderId = orderData.customerId;
@@ -150,6 +183,7 @@ class TaskGeneratorService {
         });
         if (existing) continue;
 
+        const assignment = await resolveAssignee(rule);
         const taskData = {
           type: rule.taskType,
           priority: rule.priority,
@@ -168,6 +202,10 @@ class TaskGeneratorService {
             evaluatedAt: new Date().toISOString(),
           },
         };
+        if (assignment) {
+          taskData.assigneeId = assignment.assigneeId;
+          taskData.assigneeName = assignment.assigneeName;
+        }
 
         if (orderData.customerId) {
           taskData.orderId = orderData.customerId;
@@ -185,4 +223,4 @@ class TaskGeneratorService {
 
 const taskGenerator = new TaskGeneratorService();
 
-module.exports = { taskGenerator, TaskGeneratorService };
+module.exports = { taskGenerator, TaskGeneratorService, resolveAssignee, pickLowestLoad };

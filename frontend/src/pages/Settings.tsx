@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { settingsApi } from '../services/api';
-import { Settings, Save } from 'lucide-react';
+import { Settings, Save, Truck, MessageSquare, Clock, Globe } from 'lucide-react';
 
 const FIELDS = [
   { key: 'logisticsFollowupHours', label: 'Logistics Follow-up Hours', desc: 'Hours after which a Processing order with no logistics pickup gets a logistics-followup task', type: 'number' },
@@ -10,8 +10,15 @@ const FIELDS = [
   { key: 'vendorCallSlaMinutes', label: 'Vendor Call SLA (min)', desc: 'Vendor call task must be completed within this time. Past this = overdue.', type: 'number' },
   { key: 'cancelledRecoverySlaMinutes', label: 'Cancelled Recovery SLA (min)', desc: 'Recovery attempt for cancelled orders — SLA in minutes. Task turns critical past this.', type: 'number' },
   { key: 'reviewCallSlaMinutes', label: 'Review Call SLA (min)', desc: 'Review call for delivered orders — SLA in minutes (default 24h). Task overdue past this.', type: 'number' },
+  { key: 'reviewFollowupDelayHours', label: 'Review Follow-up Delay (Hours)', desc: 'After how many hours does the order come up in pending review calls after being delivered.', type: 'number' },
+  { key: 'returnCustomerResponseSlaMinutes', label: 'Return Customer Response SLA (min)', desc: 'SLA in minutes for contacting customer after return request is initiated.', type: 'number' },
+  { key: 'returnVendorResponseSlaMinutes', label: 'Return Vendor Response SLA (min)', desc: 'SLA in minutes for obtaining vendor response/approval for return.', type: 'number' },
   { key: 'escalationSlaMinutes', label: 'Escalation SLA (min)', desc: 'SLA in minutes for escalation tasks.', type: 'number' },
   { key: 'priorityAmountThreshold', label: 'Priority Amount Threshold (Rs)', desc: 'Orders with total amount above this Rs value get priority bumped one level (e.g. medium → high).', type: 'number' },
+  { key: 'shippedSlaFromCreationHours', label: 'Shipped SLA — From Creation (hours)', desc: 'SLA hours for shipped orders starting from order creation time.', type: 'number' },
+  { key: 'shippedSlaFromPickupHours', label: 'Shipped SLA — From Pickup Collected (hours)', desc: 'SLA hours for shipped non-heavy logistics orders starting from pickup collected time.', type: 'number' },
+  { key: 'commerceApiBase', label: 'Commerce API Base URL', desc: 'Base URL for the external commerce API (e.g. https://commerce.thecanbrand.com/api). Used for logistics comments and delivery zone group fetching.', type: 'text' },
+  { key: 'commentSlaThresholdMinutes', label: 'Comment SLA Threshold (min)', desc: 'Minutes after which the SLA is considered breached and the comment button appears on shipped orders.', type: 'number' },
 ];
 
 export default function SettingsPage() {
@@ -55,6 +62,26 @@ export default function SettingsPage() {
             <p className="text-sm text-indigo-200 mt-1">Configure follow-up rules, SLAs, and thresholds. Changes apply on next sync.</p>
           </div>
         </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+        <div className="border-b border-slate-200 pb-4">
+          <h2 className="text-lg font-bold text-slate-900">Delivery Zones</h2>
+          <p className="text-xs text-slate-500 mt-1">Branch lists are fetched from the commerce API at setup (seed). SLA hours apply to shipped orders per zone.</p>
+        </div>
+        {(Array.isArray(values.deliveryZones) ? values.deliveryZones : []).map((zone) => (
+          <div key={zone.key} className="border border-slate-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-bold text-slate-900">{zone.label}</label>
+              <span className="text-xs text-slate-500">{Array.isArray(zone.branches) ? zone.branches.length : 0} branches</span>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 mb-1">Expected delivery SLA (hours)</p>
+              <input type="number" value={zone.slaHours ?? ''} onChange={(e) => setValues(v => ({ ...v, deliveryZones: (v.deliveryZones || []).map(z => z.key === zone.key ? { ...z, slaHours: Number(e.target.value) } : z) }))}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" />
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">

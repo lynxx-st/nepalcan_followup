@@ -1,0 +1,47 @@
+Please use this flow 
+
+New Order = Pending Order Confirmation
+
+If accepted by customer (moves to Vendor Follow Up (Rename Mark as done to vendor Follow Up), then remove customer module, and open vendor module
+
+If vendor reschedules, please show it in a new Vendor Rescheduled, (or customer rescheduled tab above) (Or any other status, it should be recorded on database, and introduce the order follow up status in every order, and it should update) 
+
+If confirmed by vendor, close the vendor call module, and change the page and status to confirmed but unprocessed. 
+
+This means, the order page automatically picks the main order page according to the order status. 
+
+In confirmed but unprocessed, remove the vendor module and just have the call vendor button. Also add a module to record the status and it should show on why the order is unprocessed after calling and talking with the vendor) 
+
+Now in the shipped status, just show the details and External Logistics Support Number to call - (+977 01-5970736) 
+
+And if the Shipped SLA is crossed (we should be able to set it up on setting based on the delivery zone group, same city major city or third tier city, and their expected delivery time. The delivery time SLA for the shipped status should be two way, one starting from when the order was created, and next from when the pickup was collected or drop order was collected in the external logistics (this is for nonheavyexternal orders only ) 
+
+The SLA from the order created time, there we should only be able to call the customer or NCM support if the SLA is crossed. 
+
+If the delivery SLA is crossed, there should be a new API connected endpoint which will leave the comment in the external non heavy logistics order id, and all the responses should also be shown there. Please take the base url of the external from .env
+
+Here is the docs - @apidocs
+
+don't take demo.nepalcanmove.com as the base url 
+
+but take it from the .env 
+
+
+
+And once the shipped SLA is crossed, only then the button will appear to leave a comment, and a comment will be leaved there, it should also fetch the order comment. 
+
+Every order should show the time it took from order created to delivered to the customer in a day hour and minute format 
+
+Now coming to the after the product is delivered, after the review SLA is crossed, the order should be shown on pending review calls. 
+
+
+Now for the returns, it will pull from the return API, and if the return is there, we should be able to zoom and view the image on click. And it's not necessary that first follow up customer or vendor, but we should be able to follow up on anyone, and the status should update, and we should be able to edit the status on return as well. All the returns should be recorded to the database, in fact every action from start so we can design proper analytics. 
+
+Please hide the task queues page from the frontend, and please enhance the UI/UX and mechanism and algorithm of the next call page, with more detail, more options based on the flow to support the current flow of work. Also, on the rules, make the created rules editable, and please make the rule setting simple and easy to use. 
+
+The next call page should show two different views, one free choosing view, which can be sortable on many types like order status, order urgency, SLA, priority and other, and next view is the Tinder like view, which will show the full order page, and quick actions, making it easy to work, with a checklist according to the task type, and it should only come there based on algorithm, and the priority (not based on task type), but the priority to follow up using a advanced algorithm. The skipped tasks will be sent back to the queue. And the next one to call will be determined based on the algorithm, urgency, one where we have a chance to lose the customer, and we must avoid returns , please brainstorm for it 
+
+
+Also, when designing, please make sure to make this system based on the future goals, such as if there are two users with the Follow Up role, how to divide the tasks among them, targets, managerial tasks, etc. 
+
+Also, please plan the scope and the vastness of data, charts, reports, analytics, identifying areas to improve we can take from all the recorded data, and how we visualize them. Please make a new phase.md based on this, update the readme.md files, the claude.md files, and design.md files with ui and ux requirements based on this. The phase.md should be divided like a checklist, and there should be atleast 20 phases. Please brainstorm on how to make it better, and please rehaul the mobile usability, to make it a SaaS like app, and this the a mobile first app, so mobile friendliness should be top notch. Also please make the navbar like a saas, and make UI and major focus on UX according to the flow. Please brainstorm hard, search the web, look at articles on how to make the best UI/UX how to design, and how backlinks, the depth of click in every pages help the UX. Read research papers, look at other examples of these workflows etc. Please plan properly 
