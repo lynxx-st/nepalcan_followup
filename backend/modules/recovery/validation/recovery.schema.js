@@ -17,6 +17,7 @@ const createRecoverySchema = Joi.object({
 
 const updateRecoverySchema = Joi.object({
   outcome: Joi.string().valid('recovered', 'lost', 'in-progress').optional(),
+  recoveredBy: Joi.string().allow('').optional(),
   recoveredRevenue: Joi.number().min(0).optional(),
   stepIndex: Joi.number().integer().min(0).optional(),
   stepOutcome: Joi.string()

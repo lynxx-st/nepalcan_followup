@@ -1,10 +1,21 @@
 const axios = require('axios');
 const commerceAuth = require('../service/commerce.auth.service');
-const { commerceSync } = require('../service/commerce.sync.service');
-const { CommerceOrder, Task } = require('../../../database/models');
+const { commerceSync, deliveryMark } = require('../service/commerce.sync.service');
+const { CommerceOrder, Task, OrderReturn } = require('../../../database/models');
 const config = require('../../../config');
 const { decodeBase64 } = require('../../../utils/decode');
 const recoveryService = require('../../../modules/recovery/service/recovery.service');
+
+const externalLogisticsIdOf = (order) =>
+  order.externalLogisticsOrderId || order.commerce?.externalLogisticsOrderId || order.commerce?.externalNonHeavyLogisticsId || null;
+
+// Return stage is derived from response statuses + follow-up order, so either
+// side can be contacted first and any step can be re-edited (history records it).
+function computeReturnStage(r) {
+  if (['accepted', 'rejected'].includes(r.vendorResponseStatus) || r.customerResponseStatus === 'rejected') return 'completed';
+  if (r.customerResponseStatus === 'confirmed') return 'vendor_response';
+  return r.followUpOrder === 'vendor_first' ? 'vendor_response' : 'customer_response';
+}
 
 function mergeNotes(localNotes = [], apiNotes = []) {
   const app = localNotes.map((n) => ({
@@ -112,6 +123,7 @@ async function getOrders(req, res) {
       status, paymentStatus, vendor, customer 
     } = req.query;
     
+    await commerceSync.autoUpdateSlaBreachedOrders();
     const rbacQuery = buildRbacQuery(req.user);
     
     const filters = {
@@ -199,6 +211,7 @@ async function getReviews(req, res) {
 
 async function getSegmentCounts(req, res) {
   try {
+    await commerceSync.autoUpdateSlaBreachedOrders();
     const rbacQuery = buildRbacQuery(req.user);
     
     const counts = await CommerceOrder.aggregate([
@@ -210,10 +223,14 @@ async function getSegmentCounts(req, res) {
       pending_confirmation: 0,
       pending_review: 0,
       confirmed_unprocessed: 0,
-      delivered_followup: 0,
+      collected_by_logistics: 0,
       done: 0,
       rescheduled: 0,
       shipped: 0,
+      customer_response: 0,
+      vendor_response: 0,
+      cancelled: 0,
+      hold: 0,
       other: 0
     };
     
@@ -315,6 +332,7 @@ async function getOrderDetail(req, res) {
 
       const cached = {
         ...raw,
+        orderStatus: existing.commerce?.orderStatus || existing.orderStatus || raw.orderStatus,
         notes: mergeNotes(existing.notes, raw.notes),
         confirmationStatus: existing.customer?.confirmationStatus || 'pending',
         vendorStatus: existing.vendor?.vendorStatus || 'unassigned',
@@ -333,11 +351,16 @@ async function getOrderDetail(req, res) {
         receiver: existing.commerce?.receiver,
         destinationBranch: existing.commerce?.destinationBranch,
         externalNonHeavyLogisticsId: existing.commerce?.externalNonHeavyLogisticsId,
+        externalLogisticsOrderId: existing.externalLogisticsOrderId || existing.commerce?.externalLogisticsOrderId,
+        externalStatusHistory: existing.externalStatusHistory || [],
         pickupTicketId: existing.commerce?.pickupTicketId,
+        sla: existing.sla || null,
+        deliveredAt: existing.deliveredAt || null,
+        timeToDeliveryMs: existing.timeToDeliveryMs || null,
+        rescheduledAt: existing.rescheduledAt || null,
         activeTaskId: activeTask?._id || null,
       };
-      return res.json({ success: true, data: cached, cached: true });
-    }
+      return res.json({ success: true, data: cached, cached: true });    }
 
     // Uncached path: fetch from API, decode, store, return decoded
     let richData = null;
@@ -378,6 +401,7 @@ async function getOrderDetail(req, res) {
       // Return DECODED response
       const decodedResponse = {
         ...richData,
+        orderStatus: existing?.commerce?.orderStatus || existing?.orderStatus || richData.orderStatus,
         notes: mergeNotes(existing?.notes, richData.notes),
         confirmationStatus: existing?.customer?.confirmationStatus || 'pending',
         vendorStatus: existing?.vendor?.vendorStatus || 'unassigned',
@@ -396,7 +420,13 @@ async function getOrderDetail(req, res) {
         receiver: existing?.commerce?.receiver || null,
         destinationBranch: existing?.commerce?.destinationBranch || null,
         externalNonHeavyLogisticsId: existing?.commerce?.externalNonHeavyLogisticsId || null,
+        externalLogisticsOrderId: existing?.externalLogisticsOrderId || existing?.commerce?.externalLogisticsOrderId,
+        externalStatusHistory: existing?.externalStatusHistory || [],
         pickupTicketId: existing?.commerce?.pickupTicketId || null,
+        sla: existing?.sla || null,
+        deliveredAt: existing?.deliveredAt || null,
+        timeToDeliveryMs: existing?.timeToDeliveryMs || null,
+        rescheduledAt: existing?.rescheduledAt || null,
         activeTaskId: activeTask?._id || null,
       };
       return res.json({ success: true, data: decodedResponse, cached: false });
@@ -417,7 +447,9 @@ async function getOrderDetail(req, res) {
       orderStatus: existing.commerce?.orderStatus,
       paymentStatus: existing.commerce?.paymentStatus,
       paymentMethod: existing.commerce?.paymentMethod,
-      totalAmount: existing.commerce?.totalAmount,
+      totalAmount: existing.totalAmount || existing.commerce?.totalAmount || (existing.commerce?.items || existing.items || []).reduce((acc, it) => acc + (Number(it.price || it.product?.price || it.product?.sellingPrice || it.variant?.sellingPrice || 0) * Number(it.quantity || 1)), 0) || 0,
+      externalLogisticsOrderId: existing.externalLogisticsOrderId || existing.commerce?.externalLogisticsOrderId,
+      externalStatusHistory: existing.externalStatusHistory || [],
       activeTaskId: activeTask?._id || null,
       cached: true,
     };
@@ -473,7 +505,7 @@ async function updateOrderPhone(req, res) {
 async function updateOrderStatus(req, res) {
   try {
     const { commerceOrderId } = req.params;
-    const { confirmationStatus, vendorStatus, orderStatus, note, review } = req.body;
+    const { confirmationStatus, vendorStatus, orderStatus, note, review, scheduledAt } = req.body;
 
     const existing = await CommerceOrder.findOne({ commerceOrderId });
     if (!existing) {
@@ -486,6 +518,16 @@ async function updateOrderStatus(req, res) {
     if (vendorStatus) update['vendor.vendorStatus'] = vendorStatus;
     if (orderStatus) update['commerce.orderStatus'] = orderStatus;
     if (review !== undefined) update['review'] = review;
+
+    const dm = deliveryMark(existing, orderStatus, existing.externalCreatedAt || existing.sla?.slaCreatedAt || existing.createdAt);
+    if (dm) {
+      update.deliveredAt = dm.deliveredAt;
+      update.timeToDeliveryMs = dm.timeToDeliveryMs;
+    }
+
+    if ((confirmationStatus === 'rescheduled' || vendorStatus === 'rescheduled') && !existing.rescheduledAt) {
+      update.rescheduledAt = scheduledAt ? new Date(scheduledAt) : new Date();
+    }
 
     const historyEntry = {
       comment: note || `Status updated`,
@@ -517,6 +559,20 @@ async function updateOrderStatus(req, res) {
     updated.workflowPriority = commerceSync.computeWorkflowPriority(updated);
     await updated.save();
 
+    // Auto-complete active tasks matching updated stage
+    if (confirmationStatus === 'confirmed') {
+      await Task.updateMany(
+        { orderId: commerceOrderId, type: 'customer-confirmation', status: { $in: ['pending', 'in-progress', 'overdue'] } },
+        { $set: { status: 'completed', outcome: 'Customer Confirmed', completedAt: new Date() } }
+      );
+    }
+    if (vendorStatus === 'accepted') {
+      await Task.updateMany(
+        { orderId: commerceOrderId, type: { $in: ['vendor-call', 'vendor-delay'] }, status: { $in: ['pending', 'in-progress', 'overdue'] } },
+        { $set: { status: 'completed', outcome: 'Vendor Accepted', completedAt: new Date() } }
+      );
+    }
+
     if (orderStatus && orderStatus !== prevStatus) {
       const isCancel = orderStatus === 'Cancelled';
       const wasCancel = prevStatus === 'Cancelled';
@@ -526,6 +582,7 @@ async function updateOrderStatus(req, res) {
           isCancel,
           fromStatus: prevStatus,
           toStatus: orderStatus,
+          recoveredBy: wasCancel && !isCancel ? (req.user?.name || req.user?.email || 'staff') : undefined,
         }).catch((err) => console.error('Recovery record failed', err));
       }
     }
@@ -536,6 +593,49 @@ async function updateOrderStatus(req, res) {
       success: false,
       error: { message: error.message },
     });
+  }
+}
+
+async function getExternalComments(req, res) {
+  try {
+    const { commerceOrderId } = req.params;
+    const order = await CommerceOrder.findOne({ commerceOrderId }).lean();
+    if (!order) {
+      return res.status(404).json({ success: false, error: { message: 'Order not found' } });
+    }
+    const externalId = externalLogisticsIdOf(order);
+    if (!externalId) {
+      return res.json({ success: true, data: { comments: [] } });
+    }
+    const comments = await commerceSync.fetchExternalComments(externalId);
+    res.json({ success: true, data: { comments } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: error.message } });
+  }
+}
+
+async function postExternalComment(req, res) {
+  try {
+    const { commerceOrderId } = req.params;
+    const { comments } = req.body;
+    if (!comments || !String(comments).trim()) {
+      return res.status(400).json({ success: false, error: { message: 'comments is required' } });
+    }
+    const order = await CommerceOrder.findOne({ commerceOrderId }).lean();
+    if (!order) {
+      return res.status(404).json({ success: false, error: { message: 'Order not found' } });
+    }
+    const externalId = externalLogisticsIdOf(order);
+    if (!externalId) {
+      return res.status(400).json({ success: false, error: { message: 'No external logistics order id on this order' } });
+    }
+    const result = await commerceSync.postExternalComment(externalId, String(comments).trim());
+    res.json({ success: true, data: result });
+  } catch (error) {
+    if (error.response && [400, 401, 404].includes(error.response.status)) {
+      return res.status(error.response.status).json({ success: false, error: error.response.data || { message: error.message } });
+    }
+    res.status(500).json({ success: false, error: { message: error.message } });
   }
 }
 
@@ -589,7 +689,129 @@ async function getSyncStatus(req, res) {
   }
 }
 
+async function getReturns(req, res) {
+  try {
+    const { stage = 'customer_response', search, page = 1, limit = 20 } = req.query;
+    const query = {};
+    if (stage) query.workflowStage = stage;
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      query.$or = [
+        { externalReturnId: regex },
+        { orderId: regex },
+        { commerceOrderId: regex },
+        { 'customerProfile.name': regex },
+        { customerPhone: regex },
+        { 'vendor.name': regex },
+        { returnReason: regex },
+      ];
+    }
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [returns, total] = await Promise.all([
+      OrderReturn.find(query).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
+      OrderReturn.countDocuments(query),
+    ]);
+
+    const [custCount, vendCount] = await Promise.all([
+      OrderReturn.countDocuments({ workflowStage: 'customer_response' }),
+      OrderReturn.countDocuments({ workflowStage: 'vendor_response' }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        returns,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        counts: {
+          customer_response: custCount,
+          vendor_response: vendCount,
+        },
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: error.message } });
+  }
+}
+
+async function updateReturnStatus(req, res) {
+  try {
+    const { returnId } = req.params;
+    const { customerResponseStatus, vendorResponseStatus, followUpOrder, note } = req.body;
+
+    const existing = await OrderReturn.findById(returnId);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: { message: 'Return not found' } });
+    }
+
+    const update = {};
+    const history = [];
+    const actorName = req.user?.name || req.user?.email || 'staff';
+    const changedAt = new Date();
+    const push = (field, value) => {
+      if (value !== undefined && value !== null && value !== existing[field]) {
+        update[field] = value;
+        history.push({ field, from: existing[field] || null, to: value, actorName, note: note || null, changedAt });
+      }
+    };
+
+    push('customerResponseStatus', customerResponseStatus);
+    push('vendorResponseStatus', vendorResponseStatus);
+    push('followUpOrder', followUpOrder);
+
+    if (history.length === 0) {
+      return res.json({ success: true, data: existing });
+    }
+
+    update.workflowStage = computeReturnStage({ ...existing.toObject(), ...update });
+    const updated = await OrderReturn.findByIdAndUpdate(
+      returnId,
+      { $set: update, $push: { returnHistory: { $each: history } } },
+      { new: true }
+    );
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: error.message } });
+  }
+}
+
+async function getReturnAttachment(req, res) {
+  const { url } = req.query;
+  // ponytail: authenticated proxy for attachment images; any http(s) url.
+  // SSRF ceiling — restrict to allowlisted hosts if this ever exposes internal
+  // network paths to untrusted clients.
+  if (!url || !/^https?:\/\//.test(url)) {
+    return res.status(400).json({ success: false, error: { message: 'valid http(s) url required' } });
+  }
+  try {
+    const response = await axios.get(url, {
+      responseType: 'stream',
+      timeout: 15000,
+      headers: { 'User-Agent': 'nepalcan-followup' },
+    });
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+    response.data.pipe(res);
+  } catch (error) {
+    res.status(502).json({ success: false, error: { message: 'Failed to fetch attachment' } });
+  }
+}
+
+async function syncReturns(req, res) {
+  try {
+    const result = await commerceSync.syncOrderReturns();
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: error.message } });
+  }
+}
+
 module.exports = {
+  computeReturnStage,
   login,
   syncOrders,
   syncExternalNonHeavy,
@@ -605,4 +827,10 @@ module.exports = {
   updateOrderPhone,
   updateOrderStatus,
   addOrderNote,
+  getExternalComments,
+  postExternalComment,
+  getReturns,
+  getReturnAttachment,
+  updateReturnStatus,
+  syncReturns,
 };

@@ -2,8 +2,11 @@ import { TaskQueue } from '../types';
 import { PhoneOff, Clock, CheckCircle2, XCircle, Calendar, AlertTriangle, Tag, Zap, Sparkles, PhoneCall } from 'lucide-react';
 
 interface OutcomeButtonsProps {
-  queue: TaskQueue;
-  onSelect: (outcome: string, note?: string) => void;
+  queue?: TaskQueue;
+  taskType?: any;
+  onSelect?: (outcome: string, note?: string) => void;
+  onSelectOutcome?: (outcome: string, note?: string) => void;
+  disabled?: boolean;
 }
 
 const ICONS = { PhoneOff, Clock, CheckCircle2, XCircle, Calendar, AlertTriangle, Tag, Zap, Sparkles, PhoneCall };
@@ -63,12 +66,17 @@ const ActionButton = ({ label, color, icon, onClick }: ButtonDef & { onClick: ()
   );
 };
 
-export default function OutcomeButtons({ queue, onSelect }: OutcomeButtonsProps) {
-  const specific = BUTTONS[queue] || [];
+export default function OutcomeButtons({ queue, taskType, onSelect, onSelectOutcome }: OutcomeButtonsProps) {
+  const activeQueue = queue || taskType || 'customer-confirmation';
+  const specific = (BUTTONS as any)[activeQueue] || [];
+  const handleSelect = (outcome: string) => {
+    if (onSelect) onSelect(outcome);
+    if (onSelectOutcome) onSelectOutcome(outcome);
+  };
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-      {[...specific, ...COMMON].map((btn) => (
-        <ActionButton key={btn.outcome} {...btn} onClick={() => onSelect(btn.outcome)} />
+      {[...specific, ...COMMON].map((btn: ButtonDef) => (
+        <ActionButton key={btn.outcome} {...btn} onClick={() => handleSelect(btn.outcome)} />
       ))}
     </div>
   );

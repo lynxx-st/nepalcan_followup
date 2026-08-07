@@ -1,4 +1,43 @@
 const mongoose = require('mongoose');
+const axios = require('axios');
+const config = require('../../config');
+const logger = require('../../utils/logger');
+const commerceAuth = require('../../modules/commerce/service/commerce.auth.service');
+
+// Fetch branch lists per delivery-zone-group from the commerce API once, at
+// seed time. Snapshot design: mapping goes stale only if commerce changes
+// groups — re-seed (delete the settings row) to refresh.
+async function fetchDeliveryZoneGroups(seedValue) {
+  try {
+    const token = await commerceAuth.getToken();
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+    const base = String(config.commerceApiBase).replace(/\/marketplace-orders$/, '');
+    const groups = [];
+    let page = 1;
+    while (page <= 10) {
+      const response = await axios.get(`${base}/delivery-zone-group/list?active=true&page=${page}&limit=100`, { headers, timeout: 15000 });
+      const items = (response.data && response.data.data) || [];
+      if (items.length === 0) break;
+      groups.push(...items);
+      if (items.length < 100) break;
+      page++;
+    }
+    return (seedValue || []).map((tier) => {
+      const group = groups.find((g) => String(g._id) === String(tier.zoneGroupId));
+      if (!group) return tier;
+      const branches = [...new Set((group.branches || [])
+        .map((b) => String((b && b.name) || '').trim().toUpperCase())
+        .filter(Boolean))];
+      return { ...tier, branches };
+    });
+  } catch (err) {
+    logger.warn('Failed to fetch delivery zone groups at seed, seeding empty lists', { error: err.message });
+    return seedValue || [];
+  }
+}
 
 const TaskSchema = new mongoose.Schema({
   taskNumber: {
@@ -177,6 +216,10 @@ const TaskRuleSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+
+  // ── Assignment (Phase 9: multi-user task division) ──
+  assigneeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+  team: { type: String },
 }, {
   timestamps: true,
   collection: 'task_rules',
@@ -312,6 +355,9 @@ const RecoveryCampaignSchema = new mongoose.Schema({
     enum: ['recovered', 'lost', 'in-progress'],
     default: 'in-progress',
   },
+  recoveredBy: {
+    type: String,
+  },
   recoveredRevenue: {
     type: Number,
     default: 0,
@@ -343,7 +389,7 @@ const CommerceOrderSchema = new mongoose.Schema({
   // ── Workflow (Computed, Indexed) ──
   workflowStage: {
     type: String,
-    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'delivered_followup', 'done', 'rescheduled', 'other'],
+    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'collected_by_logistics', 'done', 'rescheduled', 'shipped', 'customer_response', 'vendor_response', 'cancelled', 'hold', 'other'],
     default: 'other',
   },
   workflowPriority: {
@@ -368,6 +414,25 @@ const CommerceOrderSchema = new mongoose.Schema({
   assignedAt: { type: Date },
   branch: { type: String },
   team: { type: String },
+  deliveryZone: { type: String, enum: ['same-city', 'major', 'third-tier', 'other'], default: 'other' },
+
+  // ── Delivery SLA (two windows: order creation, pickup collected) ──
+  sla: {
+    slaCreatedAt: { type: Date },
+    slaPickupAt: { type: Date },
+    deadlineA: { type: Date },
+    deadlineB: { type: Date },
+    slaDeliveryDeadline: { type: Date },
+    slaStatus: { type: String, enum: ['pending', 'ok', 'breached'], default: 'pending' },
+  },
+
+  // ── Delivery Time Tracking (created → delivered) ──
+  externalCreatedAt: { type: Date },
+  deliveredAt: { type: Date, index: true },
+  timeToDeliveryMs: { type: Number },
+
+  // ── Reschedule tracking (customer/vendor call rescheduled) ──
+  rescheduledAt: { type: Date },
 
   // ── Customer ──
   customer: {
@@ -462,6 +527,27 @@ const CommerceOrderSchema = new mongoose.Schema({
     metadata: mongoose.Schema.Types.Mixed,
   }],
 
+  // ── Logistics Timeline (from external API) ──
+  externalStatusHistory: [{
+    event: String,
+    status: String,
+    rawPayload: mongoose.Schema.Types.Mixed,
+    receivedAt: Date,
+  }],
+  externalLogisticsOrderId: String,
+
+  // ── Structured Review ──
+  review: {
+    text: String,
+    platformSatisfied: { type: String, enum: ['yes', 'no', 'other'] },
+    platformSatisfiedOther: String,
+    deliverySatisfied: { type: String, enum: ['yes', 'no', 'other'] },
+    deliverySatisfiedOther: String,
+    willUseAgain: { type: String, enum: ['yes', 'no', 'other'] },
+    willUseAgainOther: String,
+    submittedAt: Date,
+  },
+
   notes: [{
     actor: { type: String, enum: ['system', 'customer', 'vendor', 'admin', 'staff'] },
     actorName: String,
@@ -481,6 +567,7 @@ CommerceOrderSchema.index({ team: 1, workflowStage: 1 });
 CommerceOrderSchema.index({ workflowStage: 1, workflowUpdatedAt: 1 });
 CommerceOrderSchema.index({ 'commerce.orderStatus': 1, 'customer.confirmationStatus': 1, 'vendor.vendorStatus': 1 });
 CommerceOrderSchema.index({ 'customer.name': 1, 'customer.phone': 1 });
+CommerceOrderSchema.index({ 'sla.slaStatus': 1, 'sla.slaDeliveryDeadline': 1 });
 
 const AdminSchema = new mongoose.Schema({
   name: {
@@ -509,6 +596,10 @@ const AdminSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  isVerified: {
+    type: Boolean,
+    default: false,
+  },
   lastLoginAt: Date,
 }, {
   timestamps: true,
@@ -522,8 +613,19 @@ const defaultSettings = {
   vendorCallSlaMinutes: { value: 120, description: 'SLA in minutes for vendor call tasks' },
   cancelledRecoverySlaMinutes: { value: 15, description: 'SLA in minutes for cancelled recovery tasks' },
   reviewCallSlaMinutes: { value: 1440, description: 'SLA in minutes for review call tasks (24h)' },
+  reviewFollowupDelayHours: { value: 24, description: 'Hours after an order is Delivered before it appears in Pending Review calls' },
+  returnCustomerResponseSlaMinutes: { value: 60, description: 'SLA in minutes for return customer response tasks' },
+  returnVendorResponseSlaMinutes: { value: 120, description: 'SLA in minutes for return vendor response tasks' },
   escalationSlaMinutes: { value: 10, description: 'SLA in minutes for escalation tasks' },
   priorityAmountThreshold: { value: 1000, description: 'Orders above this Rs amount get priority bumped one level' },
+  deliveryZones: {
+    value: [
+      { key: 'same-city', label: 'Inside Valley / Same city', slaHours: 24, zoneGroupId: '69d72c4f74fde1d06b5a7a69', branches: [] },
+      { key: 'major', label: 'To Major Cities', slaHours: 48, zoneGroupId: '69d72c7c74fde1d06b5a7aab', branches: [] },
+      { key: 'third-tier', label: 'Except Major city', slaHours: 72, zoneGroupId: '69d7253174fde1d06b5a5970', branches: [] },
+    ],
+    description: 'Delivery zones: zoneGroupId maps each tier to a commerce delivery-zone-group; branches are refreshed from the commerce API on sync. destinationBranch name matched against each tier in order.',
+  },
 };
 
 const SettingSchema = new mongoose.Schema({
@@ -545,6 +647,15 @@ const SettingSchema = new mongoose.Schema({
 });
 
 async function seedSettings() {
+  const zoneDef = defaultSettings.deliveryZones;
+  if (zoneDef) {
+    const existing = await mongoose.model('Setting').findOne({ key: 'deliveryZones' });
+    const allEmpty = !existing || !Array.isArray(existing.value) ||
+      existing.value.every((t) => !Array.isArray(t.branches) || t.branches.length === 0);
+    if (allEmpty) {
+      zoneDef.value = await fetchDeliveryZoneGroups(zoneDef.value);
+    }
+  }
   for (const [key, def] of Object.entries(defaultSettings)) {
     await mongoose.model('Setting').findOneAndUpdate(
       { key },
@@ -592,6 +703,76 @@ const disconnectDatabase = async () => {
   }
 };
 
+const UserAttendanceSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Admin',
+    required: true,
+    index: true,
+  },
+  userName: String,
+  userEmail: String,
+  checkInTime: {
+    type: Date,
+    default: Date.now,
+    required: true,
+  },
+  checkOutTime: Date,
+  status: {
+    type: String,
+    enum: ['checked-in', 'checked-out'],
+    default: 'checked-in',
+    index: true,
+  },
+  durationMinutes: {
+    type: Number,
+    default: 0,
+  },
+  notes: String,
+}, {
+  timestamps: true,
+  collection: 'user_attendance',
+});
+
+UserAttendanceSchema.index({ userId: 1, status: 1 });
+UserAttendanceSchema.index({ userId: 1, createdAt: -1 });
+
+const OrderReturnSchema = new mongoose.Schema({
+  externalReturnId: { type: String, unique: true },
+  commerceOrderId: String,
+  orderId: String,
+  order: mongoose.Schema.Types.Mixed,
+  vendor: mongoose.Schema.Types.Mixed,
+  customerProfile: mongoose.Schema.Types.Mixed,
+  customerPhone: String,
+  items: [mongoose.Schema.Types.Mixed],
+  returnReason: String,
+  type: String,
+  attachments: [mongoose.Schema.Types.Mixed],
+  status: String,
+  superAdminStatus: String,
+  rejectReason: String,
+  concernReason: String,
+  customerResponseStatus: { type: String, default: 'pending' },
+  vendorResponseStatus: { type: String, default: 'pending' },
+  workflowStage: { type: String, default: 'customer_response' },
+  followUpOrder: { type: String, enum: ['customer_first', 'vendor_first'], default: 'customer_first' },
+  returnHistory: [{
+    field: String,
+    from: String,
+    to: String,
+    actorName: String,
+    note: String,
+    changedAt: { type: Date, default: Date.now },
+  }],
+  isActive: { type: Boolean, default: true },
+  createdAt: Date,
+  updatedAt: Date,
+}, { timestamps: true, collection: 'order_returns' });
+
+OrderReturnSchema.index({ externalReturnId: 1 });
+OrderReturnSchema.index({ workflowStage: 1 });
+
 const Setting = mongoose.model('Setting', SettingSchema);
 
 const models = {
@@ -601,7 +782,9 @@ const models = {
   CallLog: mongoose.model('CallLog', CallLogSchema),
   RecoveryCampaign: mongoose.model('RecoveryCampaign', RecoveryCampaignSchema),
   CommerceOrder: mongoose.model('CommerceOrder', CommerceOrderSchema),
+  OrderReturn: mongoose.model('OrderReturn', OrderReturnSchema),
   Admin: mongoose.model('Admin', AdminSchema),
+  UserAttendance: mongoose.model('UserAttendance', UserAttendanceSchema),
   Setting,
 };
 

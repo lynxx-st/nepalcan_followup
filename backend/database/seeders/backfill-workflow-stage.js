@@ -3,16 +3,35 @@ require('dotenv').config();
 const { connectDatabase } = require('../models');
 const CommerceOrder = require('../models').CommerceOrder;
 
+function isOrderSlaBreached(order) {
+  if (!order) return false;
+  if (order.isOverdue || order.taskStatus === 'overdue' || order.slaBreached) return true;
+  const dueAtStr = order.dueAt || order.activeTaskDueAt || order.slaDueAt;
+  if (dueAtStr) return new Date() > new Date(dueAtStr);
+  const refTime = order.customerCalledAt || order.workflowUpdatedAt || order.createdAt || order.externalUpdatedAt;
+  if (refTime) {
+    const elapsedMs = Date.now() - new Date(refTime).getTime();
+    if (elapsedMs > 30 * 60 * 1000) return true;
+  }
+  return false;
+}
+
 function computeWorkflowStage(order) {
-  const cs = order.confirmationStatus || 'pending';
-  const vs = order.vendorStatus || 'unassigned';
-  const os = (order.orderStatus || '').toLowerCase();
+  const cs = order.confirmationStatus || order.customer?.confirmationStatus || 'pending';
+  const vs = order.vendorStatus || order.vendor?.vendorStatus || 'unassigned';
+  const os = (order.orderStatus || order.commerce?.orderStatus || '').toLowerCase();
+
+  if (cs === 'rescheduled' || vs === 'rescheduled') return 'rescheduled';
+  if (os === 'shipped') return 'shipped';
+  if (['delivered', 'return delivered'].includes(os)) return 'delivered_followup';
+  if (os === 'processing') return 'confirmed_unprocessed';
+
+  if (cs === 'confirmed') {
+    if (isOrderSlaBreached(order)) return 'confirmed_unprocessed';
+    return 'done';
+  }
 
   if (cs === 'pending' && os === 'pending') return 'pending_confirmation';
-  if (cs === 'confirmed' && vs === 'accepted' && ['pending', 'processing'].includes(os)) return 'pending_review';
-  if (cs === 'confirmed' && ['pending', ''].includes(os)) return 'confirmed_unprocessed';
-  if (os === 'delivered') return 'delivered_followup';
-  if (cs === 'confirmed') return 'done';
   return 'other';
 }
 

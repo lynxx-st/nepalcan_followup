@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const seedSuperAdmin = require('../seed/seed-admin.service');
 const adminController = require('../controller/admin.controller');
 const { authenticate, requireSuperAdmin } = require('../../../src/middleware/auth');
 
@@ -12,15 +11,6 @@ router.post('/users/:id/reset-password', authenticate, requireSuperAdmin, adminC
 
 const seedTaskRules = require('../../rules/seed/seed-rules.service');
 const { Task, CommerceOrder } = require('../../../database/models');
-
-router.post('/seed', async (req, res, next) => {
-  try {
-    const admin = await seedSuperAdmin();
-    res.json({ success: true, data: admin });
-  } catch (error) {
-    next(error);
-  }
-});
 
 router.post('/reset', async (req, res, next) => {
   try {

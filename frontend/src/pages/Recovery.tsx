@@ -1,28 +1,25 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { recoveryApi } from '../services/api';
+import Breadcrumbs from '../components/Breadcrumbs';
 import {
   RotateCcw, DollarSign, TrendingUp, Gift, XCircle,
-  CheckCircle2, Search, Zap, PieChart as PieIcon,
+  CheckCircle2, Search, Zap, Eye,
 } from 'lucide-react';
 
-
-
 export default function Recovery() {
+  const navigate = useNavigate();
   const [records, setRecords] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [filterOutcome, setFilterOutcome] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const fetchData = async () => {
     try {
-      const [recRes, statsRes] = await Promise.all([
-        recoveryApi.list(),
-        recoveryApi.getStats(),
-      ]);
-      setRecords((recRes as any).data || []);
-      setStats((statsRes as any).data || null);
+      setLoading(true);
+      const recRes: any = await recoveryApi.list();
+      setRecords(recRes?.data || []);
     } catch (err) {
       console.error('Failed to load recovery data', err);
     } finally {
@@ -37,27 +34,20 @@ export default function Recovery() {
   const handleUpdate = async (id: string, outcome: string) => {
     try {
       await recoveryApi.update(id, { outcome });
-      toast.success(`Marked as ${outcome}`, { duration: 3000 });
+      toast.success(`Marked as ${outcome}`);
       fetchData();
     } catch {
-      toast.error('Failed to update');
+      toast.error('Failed to update campaign');
     }
   };
 
   const total = records.length;
   const recovered = records.filter((r) => r.outcome === 'recovered').length;
   const lost = records.filter((r) => r.outcome === 'lost').length;
-  const pending = records.filter((r) => !r.outcome || r.outcome === 'pending' || r.outcome === 'in-progress').length;
   const recoveryRate = recovered + lost > 0 ? Math.round((recovered / (recovered + lost)) * 100) : 0;
   const totalRecoveredRevenue = records
     .filter((r) => r.outcome === 'recovered')
     .reduce((sum, r) => sum + (r.revenueAmount || 0), 0);
-
-  const reasonCounts: Record<string, number> = {};
-  records.forEach((r: any) => {
-    const reason = r.cancellationReason || 'Other';
-    reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
-  });
 
   const filteredRecords = records.filter((r) => {
     if (filterOutcome !== 'all') {
@@ -78,160 +68,152 @@ export default function Recovery() {
     return true;
   });
 
-  if (loading) {
-    return <div className="flex items-center justify-center h-64 text-slate-500">Loading recovery data...</div>;
-  }
-
   return (
-    <div className="space-y-6 pb-12 animate-in">
-      <div className="bg-gradient-to-r from-slate-900 via-rose-950 to-slate-900 text-white rounded-2xl p-6 border border-rose-900/40 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="space-y-1">
+    <div className="space-y-6 pb-16 animate-in">
+      <Breadcrumbs items={[{ label: 'Cancelled Order Recovery' }]} />
+
+      {/* Header Container */}
+      <div className="card-blueprint p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
           <div className="flex items-center gap-2">
-            <RotateCcw className="w-6 h-6 text-rose-400" />
-            <h1 className="text-2xl font-black text-white">Cancellation Revenue Recovery</h1>
+            <h1 className="text-xl font-bold text-[#0a0a0a]">Cancelled Revenue Recovery</h1>
+            <span className="badge-pill badge-pill-solid text-[10px] uppercase">
+              {total} Campaigns
+            </span>
           </div>
-          <p className="text-xs text-slate-300 max-w-xl">
-            Turn cancellations into saved sales with automated coupon offers and dedicated recovery queues.
+          <p className="text-xs text-[#737373] mt-1">
+            Automated recovery queues targeting cancelled orders to recover lost revenue.
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <span>Recovered Revenue</span>
-            <DollarSign className="w-4 h-4 text-emerald-500" />
-          </div>
-          <div className="text-2xl font-black font-mono text-emerald-600">
-            NPR {totalRecoveredRevenue.toLocaleString()}
-          </div>
-          <div className="text-[11px] text-slate-500">From {recovered} saved orders</div>
+      {/* Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="card-blueprint p-5">
+          <p className="text-xs font-medium uppercase tracking-wider text-[#737373]">Recovered Revenue</p>
+          <p className="text-2xl font-bold text-[#0a0a0a] mt-1">Rs. {totalRecoveredRevenue.toLocaleString()}</p>
+          <p className="text-[11px] text-[#737373] mt-1">Saved order value</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <span>Recovery Rate</span>
-            <TrendingUp className="w-4 h-4 text-indigo-500" />
-          </div>
-          <div className="text-2xl font-black font-mono text-indigo-600">{recoveryRate}%</div>
-          <div className="text-[11px] text-slate-500">Target: 35%+</div>
+
+        <div className="card-blueprint p-5">
+          <p className="text-xs font-medium uppercase tracking-wider text-[#737373]">Recovery Success Rate</p>
+          <p className="text-2xl font-bold text-[#0a0a0a] mt-1">{recoveryRate}%</p>
+          <p className="text-[11px] text-[#737373] mt-1">{recovered} of {recovered + lost} resolved</p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <span>Pending Recovery</span>
-            <Gift className="w-4 h-4 text-amber-500" />
-          </div>
-          <div className="text-2xl font-black font-mono text-amber-600">{pending} Orders</div>
-          <div className="text-[11px] text-slate-500">Active calls waiting</div>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <span>Unrecoverable</span>
-            <XCircle className="w-4 h-4 text-slate-400" />
-          </div>
-          <div className="text-2xl font-black font-mono text-slate-700">{lost} Orders</div>
-          <div className="text-[11px] text-slate-500">Closed after call</div>
+
+        <div className="card-blueprint p-5">
+          <p className="text-xs font-medium uppercase tracking-wider text-[#737373]">Active Recovery Queue</p>
+          <p className="text-2xl font-bold text-[#0a0a0a] mt-1">
+            {records.filter(r => !r.outcome || r.outcome === 'pending' || r.outcome === 'in-progress').length}
+          </p>
+          <p className="text-[11px] text-[#737373] mt-1">Pending campaign calls</p>
         </div>
       </div>
 
-      {Object.keys(reasonCounts).length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-extrabold text-slate-900 text-sm uppercase tracking-wide flex items-center gap-2">
-              <PieIcon className="w-4 h-4 text-rose-500" />
-              <span>Cancellation Reasons</span>
-            </h3>
+      {/* Main Campaign List */}
+      <div className="card-blueprint p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-[#e5e5e5] pb-4">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            {(['all', 'pending', 'recovered', 'lost'] as const).map((st) => (
+              <button
+                key={st}
+                onClick={() => setFilterOutcome(st)}
+                className={`px-3.5 py-1.5 rounded-2xl text-xs font-medium transition-all cursor-pointer capitalize ${
+                  filterOutcome === st
+                    ? 'bg-[#0a0a0a] text-white shadow-2xs font-semibold'
+                    : 'bg-[#fafafa] text-[#737373] hover:text-[#0a0a0a]'
+                }`}
+              >
+                {st}
+              </button>
+            ))}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {Object.entries(reasonCounts).map(([reason, count]) => {
-              const pct = Math.round((count / total) * 100) || 0;
-              return (
-                <div key={reason} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-slate-800">{reason}</span>
-                    <span className="font-mono font-bold text-rose-600">{count} ({pct}%)</span>
-                  </div>
-                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                    <div className="bg-rose-500 h-full rounded-full transition-all" style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-5">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <h3 className="font-extrabold text-slate-900 text-base">Recovery Records</h3>
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search order or customer..."
-                className="w-full bg-slate-100 border border-slate-300 rounded-lg pl-9 pr-3 py-1.5 text-xs focus:outline-none" />
-            </div>
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs">
-              {['all', 'pending', 'recovered'].map((f) => (
-                <button key={f} onClick={() => setFilterOutcome(f)}
-                  className={`px-3 py-1 rounded-md font-semibold cursor-pointer ${
-                    filterOutcome === f ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'
-                  }`}>{f.charAt(0).toUpperCase() + f.slice(1)}</button>
-              ))}
-            </div>
+          <div className="relative w-full sm:w-64">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#737373]" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search campaigns..."
+              className="input-blueprint w-full pl-9 pr-3 py-1.5 text-xs"
+            />
           </div>
         </div>
 
-        <div className="divide-y divide-slate-200">
-          {filteredRecords.map((record) => (
-            <div key={record._id} className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
-              <div className="space-y-1 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-slate-900 font-mono text-sm">
-                    #{record.orderNumber || record.orderId}
-                  </span>
-                  <span className="font-semibold text-slate-700">
-                    {record.customerName} {record.customerPhone && `(${record.customerPhone})`}
-                  </span>
-                  <span className="bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded text-[10px]">
-                    {record.cancellationReason}
-                  </span>
+        {/* Campaign List Cards */}
+        {loading ? (
+          <div className="text-center py-12 text-xs text-[#737373] animate-pulse">
+            Loading recovery records...
+          </div>
+        ) : filteredRecords.length === 0 ? (
+          <div className="text-center py-12 bg-[#fafafa] rounded-2xl border border-[#e5e5e5]">
+            <CheckCircle2 className="w-8 h-8 text-[#737373] mx-auto mb-2" />
+            <h3 className="font-semibold text-sm text-[#0a0a0a]">No Recovery Records</h3>
+            <p className="text-xs text-[#737373] mt-1">No cancelled order recovery campaigns match your criteria.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredRecords.map((r) => (
+              <div
+                key={r._id}
+                className="bg-[#ffffff] border border-[#e5e5e5] rounded-2xl p-4 space-y-3 hover:border-[#0a0a0a] transition-all"
+              >
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-[#0a0a0a]">
+                        #{r.orderNumber || r.commerceOrderId}
+                      </span>
+                      <span className="badge-pill badge-pill-soft text-[10px]">
+                        Reason: {r.cancellationReason || 'Cancelled'}
+                      </span>
+                    </div>
+                    <p className="text-xs font-semibold text-[#0a0a0a] mt-1">{r.customerName || 'Customer'}</p>
+                    {r.customerPhone && <p className="text-xs text-[#737373]">Phone: {r.customerPhone}</p>}
+                  </div>
+
+                  <div className="text-right">
+                    <span className="text-sm font-bold text-[#0a0a0a]">
+                      Rs. {(r.revenueAmount || 0).toLocaleString()}
+                    </span>
+                    <p className="text-[10px] text-[#737373] capitalize mt-0.5">
+                      Outcome: {r.outcome || 'pending'}
+                    </p>
+                    {r.outcome === 'recovered' && r.recoveredBy && (
+                      <p className="text-[10px] text-emerald-700 font-semibold mt-0.5">
+                        Recovered by: {r.recoveredBy}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="text-slate-500">
-                  Value: <strong className="font-mono text-slate-800">NPR {record.revenueAmount?.toLocaleString() || 0}</strong>
-                  {record.offeredIncentive && <> • Incentive: <span className="text-indigo-600 font-medium">{record.offeredIncentive}</span></>}
-                </div>
-                {record.notes && <p className="text-slate-600 italic text-[11px] bg-slate-50 p-2 rounded">"{record.notes}"</p>}
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                {record.outcome === 'recovered' && (
-                  <span className="bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-full border border-emerald-300 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Recovered
-                  </span>
-                )}
-                {record.outcome === 'lost' && (
-                  <span className="bg-slate-200 text-slate-700 font-bold px-3 py-1 rounded-full border border-slate-300 flex items-center gap-1">
-                    <XCircle className="w-3.5 h-3.5" /> Lost
-                  </span>
-                )}
-                {(!record.outcome || record.outcome === 'pending' || record.outcome === 'in-progress') && (
+
+                <div className="flex items-center justify-between pt-2 border-t border-[#f5f5f5] gap-2">
+                  {r.orderId || r.commerceOrderId ? (
+                    <Link to={`/orders/${r.orderId || r.commerceOrderId}`} className="btn-outline text-xs px-3 py-1">
+                      <Eye className="w-3.5 h-3.5" /> View Order
+                    </Link>
+                  ) : <span />}
+
                   <div className="flex items-center gap-2">
-                    <button onClick={() => handleUpdate(record._id, 'recovered')}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer">
+                    <button
+                      onClick={() => handleUpdate(r._id, 'recovered')}
+                      className="btn-primary text-xs px-3 py-1 cursor-pointer"
+                    >
                       Mark Recovered
                     </button>
-                    <button onClick={() => handleUpdate(record._id, 'lost')}
-                      className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer">
+                    <button
+                      onClick={() => handleUpdate(r._id, 'lost')}
+                      className="btn-secondary text-xs px-3 py-1 cursor-pointer text-red-600"
+                    >
                       Mark Lost
                     </button>
                   </div>
-                )}
+                </div>
               </div>
-            </div>
-          ))}
-          {filteredRecords.length === 0 && (
-            <div className="py-8 text-center text-slate-500">No records found.</div>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

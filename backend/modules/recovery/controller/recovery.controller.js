@@ -29,7 +29,11 @@ async function listCampaigns(req, res, next) {
 
 async function updateCampaign(req, res, next) {
   try {
-    const campaign = await recoveryService.updateCampaign(req.params.id, req.validatedBody);
+    const data = { ...req.validatedBody };
+    if (data.outcome === 'recovered' && !data.recoveredBy) {
+      data.recoveredBy = req.user?.name || req.user?.email || 'staff';
+    }
+    const campaign = await recoveryService.updateCampaign(req.params.id, data);
     res.json({ success: true, data: campaign });
   } catch (error) {
     next(error);

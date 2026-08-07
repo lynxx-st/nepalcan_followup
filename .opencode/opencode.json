@@ -1,0 +1,21 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "@dietrichgebert/ponytail"
+  ],
+  "provider": {
+    "routeway": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Routeway",
+      "options": {
+        "baseURL": "https://api.routeway.ai/v1",
+        "apiKey": "{env:ROUTEWAY_API}"
+      },
+      "models": {
+        "ling-3.0-flash:free": {
+          "name": "Ling 3.0 Flash (free)"
+        }
+      }
+    }
+  }
+}

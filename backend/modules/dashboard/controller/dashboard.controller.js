@@ -1,4 +1,5 @@
-const { Task, CallLog, RecoveryCampaign, CommerceOrder } = require('../../../database/models');
+const { Task, CallLog, RecoveryCampaign, CommerceOrder, UserAttendance } = require('../../../database/models');
+const attendanceService = require('../../attendance/service/attendance.service');
 
 async function getTodayDashboard(req, res, next) {
   try {
@@ -7,19 +8,65 @@ async function getTodayDashboard(req, res, next) {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const [todayTasks, totalOrders] = await Promise.all([
+    const userId = req.userId;
+
+    const [todayTasks, totalOrders, activeAttendance, completedTasks, allPendingTasks] = await Promise.all([
       Task.find({
         createdAt: { $gte: today, $lt: tomorrow },
       })
         .sort({ priority: -1, createdAt: 1 })
         .lean(),
       CommerceOrder.countDocuments(),
+      userId ? attendanceService.getActiveStatus(userId) : Promise.resolve(null),
+      Task.find({ status: 'completed' }).select('completedAt dueAt createdAt').lean(),
+      Task.find({ status: { $in: ['pending', 'in-progress', 'overdue'] } }).lean(),
     ]);
+
+    // SLA compliance calculation
+    let onTimeCompleted = 0;
+    for (const t of completedTasks) {
+      if (t.dueAt && t.completedAt && new Date(t.completedAt) <= new Date(t.dueAt)) {
+        onTimeCompleted++;
+      } else if (!t.dueAt) {
+        onTimeCompleted++;
+      }
+    }
+    const slaRate = completedTasks.length > 0 ? Math.round((onTimeCompleted / completedTasks.length) * 100) : 100;
+
+    // Stage-bundled pending breakdown & revenue at risk
+    const stages = {
+      preOrder: 0,
+      processing: 0,
+      afterDelivery: 0,
+      return: 0,
+    };
+    let revenueAtRisk = 0;
+
+    for (const task of allPendingTasks) {
+      if (task.type === 'customer-confirmation') {
+        stages.preOrder++;
+      } else if (['vendor-call', 'vendor-delay', 'logistics-followup'].includes(task.type)) {
+        stages.processing++;
+      } else if (task.type === 'review-call') {
+        stages.afterDelivery++;
+      } else if (['cancelled-recovery', 'escalation'].includes(task.type)) {
+        stages.return++;
+      } else {
+        stages.processing++;
+      }
+
+      if (task.sourceOrder && task.sourceOrder.totalAmount) {
+        revenueAtRisk += Number(task.sourceOrder.totalAmount) || 0;
+      }
+    }
 
     const summary = {
       date: today.toISOString(),
       total: todayTasks.length,
       totalOrders,
+      slaRate,
+      revenueAtRisk,
+      stages,
       byType: {},
       byPriority: {},
       overdue: 0,
@@ -65,6 +112,8 @@ async function getTodayDashboard(req, res, next) {
         overdue: overdueTasks,
         nextCall,
         recentCallLogs: callLogs,
+        attendance: activeAttendance,
+        allPendingTasks,
       },
     });
   } catch (error) {

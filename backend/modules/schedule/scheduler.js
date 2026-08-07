@@ -1,5 +1,6 @@
 const config = require('../../config');
 const { Task } = require('../../database/models');
+const { commerceSync } = require('../commerce/service/commerce.sync.service');
 const logger = require('../../utils/logger');
 
 class SLAScheduler {
@@ -50,6 +51,9 @@ class SLAScheduler {
     if (result.modifiedCount > 0) {
       logger.info(`Marked ${result.modifiedCount} tasks as overdue`);
     }
+
+    await commerceSync.autoUpdateSlaBreachedOrders();
+    await commerceSync.updateSlaStatuses();
   }
 }
 

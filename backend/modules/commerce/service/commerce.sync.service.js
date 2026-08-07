@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { CommerceOrder, Task } = require('../../../database/models');
+const { CommerceOrder, Task, OrderReturn } = require('../../../database/models');
 const commerceAuth = require('./commerce.auth.service');
 const taskGeneratorService = require('../../../modules/tasks/generator/task-generator.service');
 const taskService = require('../../../modules/tasks/service/task.service');
@@ -11,18 +11,58 @@ const recoveryService = require('../../../modules/recovery/service/recovery.serv
 
 const COMMERCE_BASE = config.commerceApiBase;
 
+// NCM vendor API comments: `{orderid, comments, addedBy, added_time}` → internal
+// note shape so the frontend renders them like other api-sourced notes.
+function normalizeExternalComments(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map((c) => ({
+    note: c.comments,
+    actor: c.addedBy,
+    createdAt: c.added_time,
+  }));
+}
+
+// First Delivered transition only: preserves an existing deliveredAt, computes
+// timeToDeliveryMs from the external creation anchor (null when anchor missing).
+function deliveryMark(existing, status, createdAnchor, now = new Date()) {
+  if (status !== 'Delivered' || existing?.deliveredAt) return null;
+  const created = createdAnchor ? new Date(createdAnchor) : null;
+  return {
+    deliveredAt: now,
+    timeToDeliveryMs: created ? Math.max(0, now.getTime() - created.getTime()) : null,
+  };
+}
+
+// Return attachments come in as strings or loose objects; normalize to
+// {url, name, type} and mark zoomable so the frontend lightbox can render them.
+function normalizeAttachment(a) {
+  if (!a) return null;
+  if (typeof a === 'string') a = { url: a };
+  const url = a.url || a.imageUrl || a.src || '';
+  return {
+    url,
+    name: a.name || a.filename || '',
+    type: a.type || (url.match(/\.(\w{2,5})(\?|$)/) || [])[1]?.toLowerCase() || '',
+    zoomable: true,
+  };
+}
+
 class CommerceSyncService {
   constructor() {
     this.baseUrl = COMMERCE_BASE;
     this.maxPages = 50;
     this.lastSyncCursor = null;
     this.logisticsFollowupHours = 6;
+    this.reviewFollowupDelayHours = 24;
     this.priorityAmountThreshold = 1000;
+    this.deliveryZones = null;
     this.slaDefaults = {
       'customer-confirmation': 30,
       'vendor-call': 120,
       'cancelled-recovery': 15,
       'review-call': 1440,
+      'return-customer-response': 60,
+      'return-vendor-response': 120,
       escalation: 10,
       'logistics-followup': 120,
     };
@@ -39,6 +79,29 @@ class CommerceSyncService {
 
   getSyncStatus() {
     return { ...this.syncStatus, lastSyncCursor: this.lastSyncCursor || null };
+  }
+
+  // NCM vendor API (doc: GET /api/v1/order/comment?id=ORDERID, Token auth).
+  async fetchExternalComments(orderId) {
+    if (!config.ncmApiToken) throw new Error('NCM_API_TOKEN not configured');
+    const url = `${config.ncmApiBase}/api/v1/order/comment?id=${encodeURIComponent(orderId)}`;
+    const response = await axios.get(url, {
+      headers: { Authorization: `Token ${config.ncmApiToken}` },
+      timeout: 15000,
+    });
+    return normalizeExternalComments(response.data || []);
+  }
+
+  // NCM vendor API (doc: POST /api/v1/comment {orderid, comments}).
+  async postExternalComment(orderId, text) {
+    if (!config.ncmApiToken) throw new Error('NCM_API_TOKEN not configured');
+    const url = `${config.ncmApiBase}/api/v1/comment`;
+    const response = await axios.post(
+      url,
+      { orderid: orderId, comments: text },
+      { headers: { Authorization: `Token ${config.ncmApiToken}`, 'Content-Type': 'application/json' }, timeout: 15000 }
+    );
+    return response.data;
   }
 
   resetCursor() {
@@ -59,6 +122,9 @@ class CommerceSyncService {
       const logisticsResult = await this.syncExternalNonHeavy();
       this.syncStatus.totalLogisticsSynced = logisticsResult.totalUpdated;
       this.syncStatus.tasksCreated = logisticsResult.tasksCreated;
+
+      const returnsResult = await this.syncOrderReturns();
+      this.syncStatus.totalReturnsSynced = returnsResult.totalSynced || 0;
 
       this.syncStatus.lastCompletedAt = new Date().toISOString();
       return {
@@ -84,10 +150,88 @@ class CommerceSyncService {
       if (settings.customerConfirmationSlaMinutes) this.slaDefaults['customer-confirmation'] = settings.customerConfirmationSlaMinutes;
       if (settings.vendorCallSlaMinutes) this.slaDefaults['vendor-call'] = settings.vendorCallSlaMinutes;
       if (settings.cancelledRecoverySlaMinutes) this.slaDefaults['cancelled-recovery'] = settings.cancelledRecoverySlaMinutes;
+      if (settings.reviewFollowupDelayHours !== undefined) this.reviewFollowupDelayHours = settings.reviewFollowupDelayHours;
+      if (settings.returnCustomerResponseSlaMinutes) this.slaDefaults['return-customer-response'] = settings.returnCustomerResponseSlaMinutes;
+      if (settings.returnVendorResponseSlaMinutes) this.slaDefaults['return-vendor-response'] = settings.returnVendorResponseSlaMinutes;
       if (settings.reviewCallSlaMinutes) this.slaDefaults['review-call'] = settings.reviewCallSlaMinutes;
       if (settings.escalationSlaMinutes) this.slaDefaults.escalation = settings.escalationSlaMinutes;
+      if (Array.isArray(settings.deliveryZones)) this.deliveryZones = settings.deliveryZones;
     } catch (err) {
       logger.warn('Failed to load settings, using defaults', { error: err.message });
+    }
+  }
+
+  computeDeliveryZone(branch) {
+    const name = (branch && typeof branch === 'object' ? branch.name : branch) || '';
+    const needle = String(name).trim().toUpperCase();
+    if (!needle) return 'other';
+    for (const tier of this.deliveryZones || []) {
+      if (Array.isArray(tier.branches) && tier.branches.includes(needle)) {
+        return ['same-city', 'major', 'third-tier'].includes(tier.key) ? tier.key : 'other';
+      }
+    }
+    return 'other';
+  }
+
+  getSlaHours(zone) {
+    const zones = Array.isArray(this.deliveryZones) ? this.deliveryZones : [];
+    const tier = zones.find((z) => z.key === zone) || zones.find((z) => z.key === 'third-tier');
+    return (tier && tier.slaHours) || 72;
+  }
+
+  // Two SLA windows per order: from creation and from pickup collected.
+  // Operative deadline = earlier of the two; status flips to 'breached' once
+  // past it (unless already delivered). 'other' zone falls back to third-tier
+  // hours.
+  computeSla({ created, pickup, zone = 'other', delivered = false }, now = new Date()) {
+    const hours = this.getSlaHours(zone);
+    const deadlineA = created ? new Date(created.getTime() + hours * 3600000) : null;
+    const deadlineB = pickup ? new Date(pickup.getTime() + hours * 3600000) : null;
+    const deadlines = [deadlineA, deadlineB].filter(Boolean);
+    const slaDeliveryDeadline = deadlines.length ? new Date(Math.min(...deadlines.map((d) => d.getTime()))) : null;
+    let slaStatus = 'pending';
+    if (delivered) {
+      slaStatus = 'ok';
+    } else if (slaDeliveryDeadline && now > slaDeliveryDeadline) {
+      slaStatus = 'breached';
+    }
+    return { deadlineA, deadlineB, slaDeliveryDeadline, slaStatus };
+  }
+
+  // Periodic pass (scheduler): refresh deadlines from stored anchors + current
+  // zone hours and flip pending → breached as time passes without new events.
+  async updateSlaStatuses() {
+    try {
+      await this.loadSettings();
+      const now = new Date();
+      const orders = await CommerceOrder.find({ 'sla.slaStatus': { $in: ['pending', 'breached'] } }).lean();
+      const ops = [];
+      for (const o of orders) {
+        const cur = o.sla || {};
+        const created = cur.slaCreatedAt ? new Date(cur.slaCreatedAt) : null;
+        const pickup = cur.slaPickupAt ? new Date(cur.slaPickupAt) : null;
+        const sla = this.computeSla({
+          created,
+          pickup,
+          zone: o.deliveryZone || 'other',
+          delivered: o.commerce?.orderStatus === 'Delivered',
+        }, now);
+        if (sla.slaStatus !== cur.slaStatus ||
+            String(sla.slaDeliveryDeadline) !== String(cur.slaDeliveryDeadline)) {
+          ops.push({
+            updateOne: {
+              filter: { _id: o._id },
+              update: { $set: { 'sla.deadlineA': sla.deadlineA, 'sla.deadlineB': sla.deadlineB, 'sla.slaDeliveryDeadline': sla.slaDeliveryDeadline, 'sla.slaStatus': sla.slaStatus } },
+            },
+          });
+        }
+      }
+      if (ops.length > 0) {
+        await CommerceOrder.bulkWrite(ops);
+        logger.info('SLA statuses refreshed', { updated: ops.length });
+      }
+    } catch (err) {
+      logger.error('Failed to update SLA statuses', { error: err.message });
     }
   }
 
@@ -238,6 +382,11 @@ class CommerceSyncService {
         for (const f of changes.fields) {
           $set[f.field] = this.getNested(normalized, f.field);
         }
+        const dm = deliveryMark(existing, normalized.commerce?.orderStatus, normalized.externalCreatedAt || existing.sla?.slaCreatedAt || existing.createdAt);
+        if (dm) {
+          $set.deliveredAt = dm.deliveredAt;
+          $set.timeToDeliveryMs = dm.timeToDeliveryMs;
+        }
         $set.lastSyncedAt = new Date();
         $set.synced = true;
         $set.lastSyncChanges = changes.summary;
@@ -274,6 +423,7 @@ class CommerceSyncService {
                 isCancel,
                 fromStatus: prevStatus,
                 toStatus: nextStatus,
+                recoveredBy: wasCancel && !isCancel ? 'API Sync' : undefined,
               }).catch((err) => logger.error('Recovery record failed', { orderId: order.orderId, message: err.message }));
             }
           }
@@ -281,7 +431,13 @@ class CommerceSyncService {
 
         results.push(updated);
       } else {
-        const created = await CommerceOrder.create(this.normalizeOrder(order));
+        const normalized = this.normalizeOrder(order);
+        const dm = deliveryMark(null, normalized.commerce?.orderStatus, normalized.externalCreatedAt);
+        if (dm) {
+          normalized.deliveredAt = dm.deliveredAt;
+          normalized.timeToDeliveryMs = dm.timeToDeliveryMs;
+        }
+        const created = await CommerceOrder.create(normalized);
         await this.generateTasksForOrder(created);
         results.push(created);
       }
@@ -383,7 +539,7 @@ class CommerceSyncService {
         addedUser: order.addedUser,
         items: order.items || [],
         logisticsOrderId: order.logisticsOrderId,
-        externalLogisticsOrderId: order.externalLogisticsOrderId,
+        externalLogisticsOrderId: order.externalLogisticsOrderId || order.externalNonHeavyLogisticsId,
         externalHeavyLogisticsId: order.externalHeavyLogisticsId,
         externalNonHeavyLogisticsId: order.externalNonHeavyLogisticsId,
         pickupTicketId: order.pickupTicketId,
@@ -396,6 +552,9 @@ class CommerceSyncService {
         cancelledBy: order.cancelledBy,
         cancelledReason: order.cancelledReason,
       },
+      externalStatusHistory: order.externalStatusHistory || [],
+      externalLogisticsOrderId: order.externalLogisticsOrderId || order.externalNonHeavyLogisticsId,
+      externalCreatedAt: order.createdAt || order.updatedAt || order.lastUpdatedAt || undefined,
       externalUpdatedAt: order.updatedAt || order.updated_at || order.lastUpdatedAt,
     };
 
@@ -403,6 +562,7 @@ class CommerceSyncService {
     normalized.workflowStage = this.computeWorkflowStage(normalized);
     normalized.workflowPriority = this.computeWorkflowPriority(normalized);
     normalized.workflowUpdatedAt = normalized.externalUpdatedAt || new Date();
+    normalized.deliveryZone = this.computeDeliveryZone(order.destinationBranch);
 
     return normalized;
   }
@@ -491,6 +651,11 @@ class CommerceSyncService {
         taskType = 'cancelled-recovery';
         break;
 
+      case 'Hold':
+        priority = 'high';
+        taskType = 'customer-confirmation';
+        break;
+
       case 'Delivered':
       case 'Return Delivered':
         priority = 'low';
@@ -531,23 +696,105 @@ class CommerceSyncService {
     return fallback;
   }
 
+  isOrderSlaBreached(order) {
+    if (!order) return false;
+    if (order.isOverdue || order.taskStatus === 'overdue' || order.slaBreached) return true;
+
+    const dueAtStr = order.dueAt || order.activeTaskDueAt || order.slaDueAt;
+    if (dueAtStr) {
+      return new Date() > new Date(dueAtStr);
+    }
+
+    const refTime = order.customerCalledAt || order.workflowUpdatedAt || order.createdAt || order.externalUpdatedAt;
+    if (refTime) {
+      const slaMinutes = order.slaMinutes || this.slaDefaults?.['customer-confirmation'] || 30;
+      const elapsedMs = Date.now() - new Date(refTime).getTime();
+      if (elapsedMs > slaMinutes * 60 * 1000) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   computeWorkflowStage(order) {
-    const cs = order.customer?.confirmationStatus || 'pending';
-    const vs = order.vendor?.vendorStatus || 'unassigned';
-    const os = (order.commerce?.orderStatus || '').toLowerCase();
+    const cs = order.customer?.confirmationStatus || order.confirmationStatus || 'pending';
+    const vs = order.vendor?.vendorStatus || order.vendorStatus || 'unassigned';
+    const os = (order.commerce?.orderStatus || order.orderStatus || '').toLowerCase();
 
     if (cs === 'rescheduled' || vs === 'rescheduled') return 'rescheduled';
+    if (os === 'cancelled') return 'cancelled';
+    if (os === 'hold') return 'hold';
     if (os === 'shipped') return 'shipped';
-    if (['delivered', 'return delivered'].includes(os)) return 'delivered_followup';
-    if (cs === 'confirmed' && vs === 'accepted') return 'done';
-    if (cs === 'confirmed' && ['pending', ''].includes(os)) return 'confirmed_unprocessed';
+
+    // Delivered orders
+    if (['delivered', 'return delivered'].includes(os)) {
+      return 'pending_review';
+    }
+
+    // Processing (picked up by logistics) → collected_by_logistics
+    if (os === 'processing' && cs === 'confirmed' && vs === 'accepted') {
+      return 'collected_by_logistics';
+    }
+
+    // Both customer AND vendor confirmed → confirmed_unprocessed (awaiting pickup/dropoff)
+    if (cs === 'confirmed' && vs === 'accepted') {
+      return 'confirmed_unprocessed';
+    }
+
+    // Only customer confirmed (vendor not yet accepted) → done (marked done in pre-processing)
+    if (cs === 'confirmed' && vs !== 'accepted') {
+      return 'done';
+    }
+
+    // Only vendor confirmed (customer not yet confirmed) → stays in pending_confirmation
+    if (vs === 'accepted' && cs !== 'confirmed') {
+      return 'pending_confirmation';
+    }
+
     if (cs === 'pending' && os === 'pending') return 'pending_confirmation';
     return 'other';
+  }
+
+  async autoUpdateSlaBreachedOrders() {
+    try {
+      const doneOrders = await CommerceOrder.find({
+        workflowStage: 'done',
+        'commerce.orderStatus': { $in: ['Pending', 'pending', ''] },
+      }).lean();
+
+      for (const order of doneOrders) {
+        if (this.isOrderSlaBreached(order)) {
+          await CommerceOrder.updateOne(
+            { _id: order._id },
+            { $set: { workflowStage: 'confirmed_unprocessed', workflowUpdatedAt: new Date() } }
+          );
+        }
+      }
+    } catch (err) {
+      logger.error('Failed to auto update SLA breached orders:', err);
+    }
   }
 
   computeWorkflowPriority(order) {
     const p = this.getPriorityForOrder(order);
     return p ? p.priority : 'low';
+  }
+
+  getTaskTypeForStage(stage) {
+    const map = {
+      pending_confirmation: 'customer-confirmation',
+      confirmed_unprocessed: 'vendor-call',
+      collected_by_logistics: 'logistics-followup',
+      shipped: 'logistics-followup',
+      pending_review: 'review-call',
+      customer_response: 'return-customer-response',
+      vendor_response: 'return-vendor-response',
+      rescheduled: 'cancelled-recovery',
+      cancelled: 'cancelled-recovery',
+      hold: 'customer-confirmation',
+    };
+    return map[stage] || 'customer-confirmation';
   }
 
   async getOrderStatus(commerceOrderId) {
@@ -629,11 +876,31 @@ class CommerceSyncService {
     for (const t of tasks) {
       taskMap[t.sourceOrder?.orderId] = { taskId: t._id, taskType: t.type };
     }
-    const enrichedOrders = orders.map(o => ({
-      ...o,
-      taskId: taskMap[o.commerceOrderId]?.taskId || null,
-      activeTaskType: taskMap[o.commerceOrderId]?.taskType || null,
-    }));
+    const enrichedOrders = orders.map(o => {
+      const rawTotal = o.totalAmount || o.commerce?.totalAmount;
+      const itemsList = o.commerce?.items || o.items || [];
+      const computedTotal = itemsList.reduce((acc, it) => {
+        const p = Number(it.price || it.product?.price || it.product?.sellingPrice || it.variant?.sellingPrice || 0);
+        return acc + (p * Number(it.quantity || 1));
+      }, 0);
+      const totalAmount = rawTotal || computedTotal || 0;
+
+      const activeTask = taskMap[o.commerceOrderId];
+      const activeTaskType = activeTask?.taskType || this.getTaskTypeForStage(o.workflowStage);
+      const slaMinutes = activeTask?.slaMinutes || this.slaDefaults[activeTaskType] || 60;
+      const dueAt = activeTask?.dueAt || (o.workflowUpdatedAt ? new Date(new Date(o.workflowUpdatedAt).getTime() + slaMinutes * 60000).toISOString() : null);
+
+      return {
+        ...o,
+        totalAmount,
+        taskId: activeTask?.taskId || null,
+        activeTaskType,
+        priority: o.workflowPriority || 'low',
+        slaMinutes,
+        dueAt,
+        externalLogisticsOrderId: o.externalLogisticsOrderId || o.commerce?.externalLogisticsOrderId || o.commerce?.externalNonHeavyLogisticsId,
+      };
+    });
 
     return { orders: enrichedOrders, total, page, limit };
   }
@@ -697,35 +964,69 @@ class CommerceSyncService {
           const workflowStage = this.computeWorkflowStage(order);
           const workflowPriority = this.computeWorkflowPriority(order);
 
+          const deliveryZone = this.computeDeliveryZone(item.destinationBranch);
+          const deliveryEvent = (item.externalDeliveryEvent || '').toLowerCase();
+          const isPickupEvent = deliveryEvent.includes('pickup') || deliveryEvent.includes('collected');
+          const slaInput = {
+            created: item.createdAt ? new Date(item.createdAt) : (existing?.sla?.slaCreatedAt || null),
+            pickup: existing?.sla?.slaPickupAt
+              ? new Date(existing.sla.slaPickupAt)
+              : (isPickupEvent && item.updatedAt ? new Date(item.updatedAt) : null),
+            zone: deliveryZone,
+            delivered: orderStatus === 'Delivered',
+          };
+          const sla = this.computeSla(slaInput, new Date());
+
           if (existing?.commerce?.orderStatus !== orderStatus) {
             changedOrders.push({ orderId: item.orderId, changes: [{ field: 'commerce.orderStatus', from: existing?.commerce?.orderStatus, to: orderStatus }] });
           }
 
-          bulkOps.push({
-            updateOne: {
-              filter: { commerceOrderId: item._id },
-              update: {
-                $set: {
-                  'commerce.deliveryStatus': item.externalDeliveryStatus || null,
-                  'commerce.deliveryEvent': item.externalDeliveryEvent || null,
-                  'commerce.orderStatus': orderStatus,
-                  'commerce.orderType': item.orderType || null,
-                  'commerce.branch': item.branch || null,
-                  'commerce.sender': item.sender || null,
-                  'commerce.receiver': item.receiver || null,
-                  'commerce.destinationBranch': item.destinationBranch || null,
-                  'commerce.shippingType': item.shippingType || null,
-                  'commerce.dispatchMode': item.dispatchMode || null,
-                  'commerce.externalNonHeavyLogisticsId': item.externalNonHeavyLogisticsId || null,
-                  'commerce.pickupTicketId': item.pickupTicketId || null,
-                  workflowStage,
-                  workflowPriority,
-                  externalUpdatedAt: item.updatedAt || item.updated_at || null,
-                  lastSyncedAt: new Date(),
-                },
-              },
-            },
-          });
+           const bulkUpdate = {
+             $set: {
+               'commerce.deliveryStatus': item.externalDeliveryStatus || null,
+               'commerce.deliveryEvent': item.externalDeliveryEvent || null,
+               'commerce.orderStatus': orderStatus,
+               'commerce.orderType': item.orderType || null,
+               'commerce.branch': item.branch || null,
+               'commerce.sender': item.sender || null,
+               'commerce.receiver': item.receiver || null,
+               'commerce.destinationBranch': item.destinationBranch || null,
+               'deliveryZone': deliveryZone,
+               'sla.slaCreatedAt': slaInput.created || null,
+               'sla.slaPickupAt': slaInput.pickup || null,
+               'sla.deadlineA': sla.deadlineA || null,
+               'sla.deadlineB': sla.deadlineB || null,
+               'sla.slaDeliveryDeadline': sla.slaDeliveryDeadline || null,
+               'sla.slaStatus': sla.slaStatus,
+               'commerce.shippingType': item.shippingType || null,
+               'commerce.dispatchMode': item.dispatchMode || null,
+               'commerce.externalNonHeavyLogisticsId': item.externalNonHeavyLogisticsId || null,
+               'commerce.externalLogisticsOrderId': item.externalNonHeavyLogisticsId || item.externalLogisticsOrderId || null,
+               'commerce.pickupTicketId': item.pickupTicketId || null,
+               externalLogisticsOrderId: item.externalNonHeavyLogisticsId || item.externalLogisticsOrderId || null,
+               externalStatusHistory: item.externalStatusHistory || [{
+                 event: item.externalDeliveryEvent || 'unknown',
+                 status: item.externalDeliveryStatus || 'Unknown',
+                 rawPayload: item,
+                 receivedAt: new Date(),
+               }],
+               workflowStage,
+               workflowPriority,
+               externalUpdatedAt: item.updatedAt || item.updated_at || null,
+               lastSyncedAt: new Date(),
+             },
+           };
+           const dm = deliveryMark(existing, orderStatus, slaInput.created || existing.externalCreatedAt || existing.createdAt);
+           if (dm) {
+             bulkUpdate.$set.deliveredAt = dm.deliveredAt;
+             bulkUpdate.$set.timeToDeliveryMs = dm.timeToDeliveryMs;
+           }
+           bulkOps.push({
+             updateOne: {
+               filter: { commerceOrderId: item._id },
+               update: bulkUpdate,
+             },
+           });
 
           const notPickedUp = !item.externalDeliveryEvent || item.externalDeliveryEvent === 'dropoff_collected';
           if (item.orderStatus === 'Processing' && notPickedUp) {
@@ -808,8 +1109,78 @@ class CommerceSyncService {
 
     return { totalUpdated, totalPages: currentPage - 1, tasksCreated };
   }
+
+  async syncOrderReturns(options = {}) {
+    const startTime = Date.now();
+    const { page = 1, limit = 1000 } = options;
+    logger.info('Starting external order returns sync', { page, limit });
+
+    await this.loadSettings();
+    const token = await commerceAuth.getToken();
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+
+    const url = `https://commerce.thecanbrand.com/api/order-return/provider/list?status=Active&keywords=&page=${page}&limit=${limit}&vendor=&from=&to=&returnStatus=`;
+
+    try {
+      const response = await axios.get(url, { headers, timeout: 15000 });
+      const returnList = response.data?.data || response.data || [];
+      if (!Array.isArray(returnList)) {
+        logger.warn('Order returns sync returned non-array data');
+        return { totalSynced: 0, summary: response.data?.summary || {} };
+      }
+
+      let totalSynced = 0;
+      for (const item of returnList) {
+        if (!item._id) continue;
+        const externalReturnId = String(item._id);
+        const orderInfo = item.order || {};
+        const commerceOrderId = orderInfo._id ? String(orderInfo._id) : null;
+        const orderId = orderInfo.orderId || null;
+        const customerProfile = orderInfo.customerProfile || item.customerProfile || {};
+        const customerPhone = customerProfile.phone || item.customerPhone || '';
+        const vendor = orderInfo.vendor || item.vendor || {};
+
+        const updateData = {
+          externalReturnId,
+          commerceOrderId,
+          orderId,
+          order: orderInfo,
+          vendor,
+          customerProfile,
+          customerPhone,
+          items: item.items || [],
+          returnReason: item.returnReason || '',
+          type: item.type || 'Return',
+          attachments: (item.attachments || []).map(normalizeAttachment).filter(Boolean),
+          status: item.status || 'Initiated',
+          superAdminStatus: item.superAdminStatus || 'None',
+          rejectReason: item.rejectReason || null,
+          concernReason: item.concernReason || null,
+          isActive: item.isActive !== undefined ? item.isActive : true,
+          createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
+          updatedAt: item.updatedAt ? new Date(item.updatedAt) : new Date(),
+        };
+
+        await OrderReturn.findOneAndUpdate(
+          { externalReturnId },
+          { $setOnInsert: { customerResponseStatus: 'pending', vendorResponseStatus: 'pending', workflowStage: 'customer_response' }, $set: updateData },
+          { upsert: true, new: true }
+        );
+        totalSynced++;
+      }
+
+      logger.info('Order returns sync completed', { totalSynced, elapsedMs: Date.now() - startTime });
+      return { totalSynced, summary: response.data?.summary || {} };
+    } catch (err) {
+      logger.error('Failed to sync order returns', { error: err.message });
+      return { totalSynced: 0, error: err.message };
+    }
+  }
 }
 
 const commerceSync = new CommerceSyncService();
 
-module.exports = { commerceSync, CommerceSyncService };
+module.exports = { commerceSync, CommerceSyncService, normalizeExternalComments, deliveryMark, normalizeAttachment };
