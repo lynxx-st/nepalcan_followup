@@ -25,7 +25,11 @@ const { apiLimiter, authLimiter, internalLimiter } = require('./src/middleware/r
 
 const app = express();
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: { imgSrc: ["'self'", "data:", "https:"] },
+  },
+}));
 const corsOrigin = process.env.CORS_ORIGIN || false;
 
 app.use(cors({
