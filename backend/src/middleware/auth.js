@@ -32,7 +32,7 @@ const authenticate = async (req, res, next) => {
 };
 
 const requireAdmin = (req, res, next) => {
-  if (req.userRole !== 'admin') {
+  if (!['admin', 'super-admin'].includes(req.userRole)) {
     return res.status(403).json({
       success: false,
       error: { message: 'Admin access required' },
