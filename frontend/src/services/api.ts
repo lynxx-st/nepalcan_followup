@@ -174,7 +174,11 @@ export const commerceApi = {
 
 export const noteApi = {
   addNote: (taskId: string, note: string) => api.post(`/v1/tasks/${taskId}/notes`, { note }),
-  addOrderNote: (orderId: string, note: string) => api.post(`/v1/commerce/orders/${orderId}/notes`, { note }),
+  addOrderNote: (orderId: string, note: string) => {
+    invalidateCache('getDetail');
+    invalidateCache('getOrderById');
+    return api.post(`/v1/commerce/orders/${orderId}/notes`, { note });
+  },
 };
 
 export const authApi = {

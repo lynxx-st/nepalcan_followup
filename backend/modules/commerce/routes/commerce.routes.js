@@ -20,6 +20,7 @@ router.get('/orders/:commerceOrderId/comments', authenticate, commerceController
 router.post('/orders/:commerceOrderId/comment', authenticate, commerceController.postExternalComment);
 router.put('/orders/:commerceOrderId/phone', authenticate, commerceController.updateOrderPhone);
 router.put('/orders/:commerceOrderId/status', authenticate, commerceController.updateOrderStatus);
+router.post('/orders/:commerceOrderId/notes', authenticate, commerceController.addOrderNote);
 router.get('/returns', authenticate, commerceController.getReturns);
 router.get('/returns/attachment', authenticate, commerceController.getReturnAttachment);
 router.put('/returns/:returnId/status', authenticate, commerceController.updateReturnStatus);

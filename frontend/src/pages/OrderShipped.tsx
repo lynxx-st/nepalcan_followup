@@ -5,6 +5,8 @@ import { commerceApi, noteApi, taskApi } from '../services/api';
 import { entityName } from '../utils/order';
 import Breadcrumbs from '../components/Breadcrumbs';
 import LogisticsTimeline from '../components/LogisticsTimeline';
+import FulfilmentBreakdown from '../components/FulfilmentBreakdown';
+import OrderNotes from '../components/OrderNotes';
 import {
   PhoneCall, CheckCircle2, XCircle, Clock, Calendar, AlertTriangle,
   PhoneOff, User, Store, PackageCheck, ArrowLeft,
@@ -19,9 +21,6 @@ export default function OrderShipped() {
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  const [noteText, setNoteText] = useState('');
-  const [noteSaving, setNoteSaving] = useState(false);
 
   const [externalComments, setExternalComments] = useState<any[]>([]);
   const [externalCommentText, setExternalCommentText] = useState('');
@@ -102,20 +101,10 @@ export default function OrderShipped() {
     }
   };
 
-  const handleAddNote = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!noteText.trim() || !commerceOrderId) return;
-    try {
-      setNoteSaving(true);
-      await noteApi.addOrderNote(commerceOrderId, noteText.trim());
-      setNoteText('');
-      toast.success('Note added');
-      fetchDetail();
-    } catch {
-      toast.error('Failed to add note');
-    } finally {
-      setNoteSaving(false);
-    }
+  const handleAddNote = async (note: string) => {
+    if (!commerceOrderId) return;
+    await noteApi.addOrderNote(commerceOrderId, note.trim());
+    fetchDetail();
   };
 
   const handleSavePhone = async () => {
@@ -148,7 +137,7 @@ export default function OrderShipped() {
     );
   }
 
-  const customerName = entityName(order.customer?.name) || 'Customer';
+  const customerName = entityName(order.customer) || entityName(order.customerProfile?.name) || 'Customer';
   const customerPhone = order.customerPhone || order.customer?.phone || 'N/A';
   const vendorName = entityName(order.vendor?.name) || order.vendorName || 'Vendor';
   const vendorPhone = order.vendorPhone || order.vendor?.phone || 'N/A';
@@ -164,8 +153,9 @@ export default function OrderShipped() {
    const slaDeliveryDeadline = order.sla?.slaDeliveryDeadline;
 
    const subtotal = items.reduce((s: number, i: any) => s + (i.quantity || 1) * (i.price || 0), 0);
-  const deliveryCharge = order.deliveryChargeBreakdown?.customerDeliveryCharge || 0;
-  const codFee = (order.paymentMethod === 'COD' || order.paymentMethod === 'Cash') ? 10 : 0;
+  const dcb = order.deliveryChargeBreakdown || order.commerce?.deliveryChargeBreakdown || {};
+  const deliveryCharge = dcb.customerDeliveryCharge || 0;
+  const codFee = dcb.codHandlingFee ?? ((order.paymentMethod === 'COD' || order.paymentMethod === 'Cash') ? 10 : 0);
   const computedTotal = subtotal + deliveryCharge + codFee;
 
   return (
@@ -222,7 +212,7 @@ export default function OrderShipped() {
               <ShoppingBag className="w-3.5 h-3.5 text-[#dc3545]" />
               Products ({items.length})
             </h2>
-            <span className="text-xs font-bold text-[#dc3545]">Total: Rs. {(order.totalAmount || computedTotal).toLocaleString()}</span>
+            <span className="text-xs font-bold text-[#dc3545]">Total: Rs. {computedTotal.toLocaleString()}</span>
           </div>
 
           <div className="space-y-2 max-h-36 overflow-y-auto divide-y divide-[#f5f5f5]">
@@ -253,8 +243,10 @@ export default function OrderShipped() {
             <div className="flex justify-between text-[#737373]"><span>Subtotal:</span><span className="font-medium text-[#0a0a0a]">Rs. {subtotal.toLocaleString()}</span></div>
             {deliveryCharge > 0 && <div className="flex justify-between text-[#737373]"><span>Delivery Charge:</span><span className="font-medium text-[#0a0a0a]">Rs. {deliveryCharge.toLocaleString()}</span></div>}
             {codFee > 0 && <div className="flex justify-between text-[#737373]"><span>COD Handling:</span><span className="font-medium text-[#0a0a0a]">Rs. {codFee.toLocaleString()}</span></div>}
-            <div className="flex justify-between text-xs font-bold text-[#0a0a0a] pt-1 border-t border-[#e5e5e5]"><span>Total:</span><span className="text-[#dc3545]">Rs. {(order.totalAmount || computedTotal).toLocaleString()}</span></div>
+            <div className="flex justify-between text-xs font-bold text-[#0a0a0a] pt-1 border-t border-[#e5e5e5]"><span>Total:</span><span className="text-[#dc3545]">Rs. {computedTotal.toLocaleString()}</span></div>
           </div>
+
+          <FulfilmentBreakdown order={order} />
 
           <div className="grid grid-cols-2 gap-2 text-[11px]">
             <div className="bg-[#fafafa] p-2 rounded-xl border border-[#e5e5e5]">
@@ -377,31 +369,7 @@ export default function OrderShipped() {
       )}
 
       {/* Notes Section */}
-      <div className="card-blueprint p-4 space-y-3 bg-[#ffffff]">
-        <h3 className="text-xs font-bold text-[#0a0a0a] flex items-center gap-2 uppercase tracking-wider border-b border-[#e5e5e5] pb-2">
-          <FileText className="w-3.5 h-3.5 text-[#dc3545]" />
-          Order Notes & Audit Log
-        </h3>
-        <form onSubmit={handleAddNote} className="flex gap-2">
-          <input type="text" value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Type note or call summary..." className="input-blueprint flex-1 text-xs" />
-          <button type="submit" disabled={noteSaving || !noteText.trim()} className="btn-primary text-xs px-4 py-1.5 cursor-pointer disabled:opacity-50 min-h-[44px]">
-            <Send className="w-3.5 h-3.5" />
-            <span>Add Note</span>
-          </button>
-        </form>
-        <div className="space-y-1.5 max-h-48 overflow-y-auto">
-          {notes.length === 0 ? (
-            <p className="text-xs text-[#737373] py-2">No notes recorded yet.</p>
-          ) : (
-            notes.map((n: any, idx: number) => (
-              <div key={idx} className="bg-[#fafafa] border border-[#e5e5e5] p-2.5 rounded-xl text-xs space-y-0.5">
-                <p className="text-[#0a0a0a] font-medium">{n.note || n.comment}</p>
-                <p className="text-[10px] text-[#737373]">{n.actorName || n.actor || 'System'} · {new Date(n.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+      <OrderNotes notes={notes} onAddNote={handleAddNote} />
 
       {/* Phone Edit Modal */}
       {showPhoneEdit && (
