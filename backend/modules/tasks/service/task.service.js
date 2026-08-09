@@ -4,6 +4,16 @@ const { scoreNextTask } = require('../../../utils/next-call-scorer');
 
 const PRIORITY_SCORE = { critical: 4, high: 3, medium: 2, low: 1 };
 
+const TASK_STAGE = {
+  'customer-confirmation': 'preOrder',
+  'vendor-call': 'processing',
+  'vendor-delay': 'processing',
+  'logistics-followup': 'processing',
+  'review-call': 'afterDelivery',
+  'cancelled-recovery': 'return',
+  escalation: 'return',
+};
+
 function priorityScoreSwitch() {
   return {
     $switch: {
@@ -104,7 +114,7 @@ class TaskService {
     await this.addTimeline(id, 'staff',
       data.notes || `Task marked as completed${data.durationMinutes ? ` in ${data.durationMinutes} min` : ''}`
     );
-    const outcome = data.notes || '';
+    const outcome = data.outcome || data.notes || '';
     const orderId = task.sourceOrder?.orderId;
     if (orderId) {
       const order = await CommerceOrder.findOne({ commerceOrderId: orderId });
@@ -224,28 +234,45 @@ class TaskService {
       ...orderMatch,
     }).lean();
 
-    if (candidates.length === 0) return { task: null, score: 0, factors: {} };
-
     const orderIds = [...new Set(candidates.map((t) => String(t.orderId || t.sourceOrder?.orderId)).filter(Boolean))];
     const [orders, returns, loadRows] = await Promise.all([
-      orderIds.length ? CommerceOrder.find({ commerceOrderId: { $in: orderIds } }).lean() : [],
-      orderIds.length ? OrderReturn.find({ commerceOrderId: { $in: orderIds }, workflowStage: { $ne: 'completed' } }).lean() : [],
+      orderIds.length ? CommerceOrder.find({ $or: [{ commerceOrderId: { $in: orderIds } }, { orderId: { $in: orderIds } }] }).lean() : [],
+      orderIds.length ? OrderReturn.find({ $or: [{ commerceOrderId: { $in: orderIds } }, { orderId: { $in: orderIds } }], workflowStage: { $ne: 'completed' } }).lean() : [],
       Task.aggregate([
         { $match: { status: { $in: ['pending', 'in-progress', 'overdue'] }, assigneeId: { $ne: null } } },
         { $group: { _id: '$assigneeId', n: { $sum: 1 } } },
       ]),
     ]);
-    const ordersById = new Map(orders.map((o) => [String(o.commerceOrderId), o]));
+    // ponytail: tasks sometimes carry a Mongo _id instead of the commerce number,
+    // match on either key and fold return docs in as the order fallback.
+    const ordersById = new Map();
+    for (const o of orders) {
+      ordersById.set(String(o.commerceOrderId), o);
+      if (o.orderId) ordersById.set(String(o.orderId), o);
+    }
+    const returnsById = new Map();
+    for (const r of returns) {
+      returnsById.set(String(r.commerceOrderId), r);
+      if (r.orderId) returnsById.set(String(r.orderId), r);
+    }
     const returnsByOrderId = new Set(returns.map((r) => String(r.commerceOrderId)));
     const agentLoads = new Map(loadRows.map((l) => [String(l._id), l.n]));
     const now = Date.now();
 
-    const scored = candidates.map((task) => ({
-      task,
-      ...scoreNextTask(task, { ordersById, returnsByOrderId, agentLoads, now }),
-    }));
-    scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, limit)[0];
+    const scored = candidates
+      .map((task) => {
+        const key = String(task.sourceOrder?.orderId || task.orderId);
+        const order = ordersById.get(key) || returnsById.get(key) || null;
+        return {
+          task,
+          order: order || null,
+          stage: TASK_STAGE[task.type] || 'processing',
+          ...scoreNextTask(task, { ordersById, returnsByOrderId, agentLoads, now }),
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    return { tasks: scored.slice(0, limit), total: scored.length };
   }
 
   async getTodaySummary(assigneeId) {
