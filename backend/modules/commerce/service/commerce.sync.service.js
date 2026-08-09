@@ -762,24 +762,12 @@ class CommerceSyncService {
     return 'other';
   }
 
+  // ponytail: used to force-promote 'done' orders (customer confirmed only) to
+  // 'confirmed_unprocessed' on SLA breach. That violated the lifecycle — a
+  // customer-confirmed order must stay in 'done' (Marked Done) until the vendor
+  // accepts. Kept as a no-op so the existing sync/scheduler call sites stay put.
   async autoUpdateSlaBreachedOrders() {
-    try {
-      const doneOrders = await CommerceOrder.find({
-        workflowStage: 'done',
-        'commerce.orderStatus': { $in: ['Pending', 'pending', ''] },
-      }).lean();
-
-      for (const order of doneOrders) {
-        if (this.isOrderSlaBreached(order)) {
-          await CommerceOrder.updateOne(
-            { _id: order._id },
-            { $set: { workflowStage: 'confirmed_unprocessed', workflowUpdatedAt: new Date() } }
-          );
-        }
-      }
-    } catch (err) {
-      logger.error('Failed to auto update SLA breached orders:', err);
-    }
+    return;
   }
 
   computeWorkflowPriority(order) {
