@@ -90,8 +90,6 @@ export default function OrderPendingReview() {
       reviewMissed: true,
       note: 'Review call: Customer did not pick up the call',
     });
-    await noteApi.addOrderNote(commerceOrderId!, 'Customer did not pick up the review call');
-    await fetchDetail();
     window.dispatchEvent(new Event('orders-updated'));
   };
 

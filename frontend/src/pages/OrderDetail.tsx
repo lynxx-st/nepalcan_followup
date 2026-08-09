@@ -285,7 +285,7 @@ export default function OrderDetail() {
   const isCancelled = cs === 'rejected' || os === 'Cancelled';
   const isProcessingOrShipped = ['Processing', 'Shipped', 'Delivered'].includes(os);
 
-  const reviewObj = typeof order.review === 'object' ? order.review : { text: order.review || '' };
+  const reviewObj = typeof order.review === 'object' && order.review ? order.review : { text: order.review || '' };
 
   return (
     <div className="space-y-4 pb-20 animate-in">

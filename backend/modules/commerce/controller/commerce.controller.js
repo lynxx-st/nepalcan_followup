@@ -34,6 +34,47 @@ function mergeNotes(localNotes = [], apiNotes = []) {
   return [...api, ...app].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }
 
+function statusNote(data) {
+  if (data.note && String(data.note).trim()) return String(data.note).trim();
+  const parts = [];
+  const confMap = {
+    confirmed: 'Customer confirmed order',
+    rejected: 'Customer rejected order',
+    rescheduled: 'Customer call rescheduled',
+  };
+  if (data.confirmationStatus) parts.push(confMap[data.confirmationStatus] || `Customer status set to ${data.confirmationStatus}`);
+  const venMap = {
+    accepted: 'Vendor accepted order',
+    delayed: 'Vendor reported dispatch delay',
+    rescheduled: 'Vendor dispatch rescheduled',
+  };
+  if (data.vendorStatus) parts.push(venMap[data.vendorStatus] || `Vendor status set to ${data.vendorStatus}`);
+  if (data.customerResponseStatus) {
+    parts.push(data.customerResponseStatus === 'confirmed'
+      ? 'Return: customer response confirmed'
+      : `Return: customer response ${data.customerResponseStatus}`);
+  }
+  if (data.vendorResponseStatus) {
+    parts.push(data.vendorResponseStatus === 'accepted'
+      ? 'Return: vendor approval accepted'
+      : `Return: vendor approval ${data.vendorResponseStatus}`);
+  }
+  if (data.orderStatus) parts.push(`Order status changed to ${data.orderStatus}`);
+  if (data.review !== undefined && data.review !== null) parts.push('Review collected');
+  if (data.unrecoverable === true) parts.push('Marked as unrecoverable — no further recovery attempts');
+  if (data.reviewMissed === true) parts.push('Review call: customer did not pick up');
+  return parts.length ? parts.join(' · ') : 'Order status updated';
+}
+
+function noteActor(user) {
+  const role = user?.branchRole || user?.role || 'staff';
+  return {
+    actor: role === 'admin' || role === 'super-admin' ? 'admin' : 'staff',
+    actorName: user?.name || user?.email || 'staff',
+    createdAt: new Date(),
+  };
+}
+
 function buildRbacQuery(user) {
   if (!user) return {};
   switch (user.role) {
@@ -506,7 +547,15 @@ async function updateOrderPhone(req, res) {
     const path = type === 'customer' ? 'customer.phone' : 'vendor.phone';
     const updated = await CommerceOrder.findOneAndUpdate(
       { commerceOrderId },
-      { $set: { [path]: phone } },
+      {
+        $set: { [path]: phone },
+        $push: {
+          notes: {
+            ...noteActor(req.user),
+            note: `${type === 'customer' ? 'Customer' : 'Vendor'} phone updated to ${phone}`,
+          },
+        },
+      },
       { new: true }
     );
 
@@ -575,7 +624,7 @@ async function updateOrderStatus(req, res) {
       { commerceOrderId },
       {
         $set: update,
-        $push: { statusHistory: historyEntry },
+        $push: { statusHistory: historyEntry, notes: { ...noteActor(req.user), note: statusNote(req.body) } },
       },
       { new: true }
     );

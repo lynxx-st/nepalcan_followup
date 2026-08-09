@@ -443,7 +443,7 @@ const CommerceOrderSchema = new mongoose.Schema({
     profile: mongoose.Schema.Types.Mixed,
     confirmationStatus: {
       type: String,
-      enum: ['pending', 'confirmed', 'rejected', 'no_answer', 'rescheduled'],
+      enum: ['pending', 'confirmed', 'rejected', 'no_answer', 'call_later', 'rescheduled'],
       default: 'pending',
     },
     calledAt: Date,
@@ -458,7 +458,7 @@ const CommerceOrderSchema = new mongoose.Schema({
     info: mongoose.Schema.Types.Mixed,
     vendorStatus: {
       type: String,
-      enum: ['unassigned', 'assigned', 'accepted', 'delayed', 'fulfilled', 'rescheduled'],
+      enum: ['unassigned', 'assigned', 'accepted', 'delayed', 'fulfilled', 'rescheduled', 'no_answer', 'call_later', 'schedule_dispatch'],
       default: 'unassigned',
     },
     calledAt: Date,

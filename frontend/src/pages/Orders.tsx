@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { commerceApi, taskApi } from '../services/api';
 import { useSimulatedTime } from '../hooks/useSimulatedTime';
-import { entityName } from '../utils/order';
+import { entityName, formatDuration } from '../utils/order';
 import Breadcrumbs from '../components/Breadcrumbs';
 import PriorityBadge from '../components/PriorityBadge';
 import SLACountdown from '../components/SLACountdown';
@@ -199,6 +199,13 @@ export default function Orders() {
       setSortKey(key);
       setSortDir('desc');
     }
+  };
+
+  const orderAge = (order: any) => {
+    const placedAt = order.createdAt || order.externalCreatedAt || order.sla?.slaCreatedAt;
+    if (!placedAt) return '—';
+    const now = simulatedTimeIso ? new Date(simulatedTimeIso) : new Date();
+    return formatDuration(now.getTime() - new Date(placedAt).getTime()) || '—';
   };
 
   const renderSortHeader = (key: string, label: string, align: 'left' | 'right' = 'left') => {
@@ -563,6 +570,7 @@ export default function Orders() {
                     {renderSortHeader('totalAmount', 'Total Amount', 'right')}
                     {renderSortHeader('priority', 'Priority')}
                     <th className="py-3 px-4">SLA Window</th>
+                    <th className="py-3 px-4">Order Age</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -601,6 +609,9 @@ export default function Orders() {
                         </td>
                         <td className="py-3.5 px-4">
                           <SLACountdown dueAt={order.dueAt} />
+                        </td>
+                        <td className="py-3.5 px-4 whitespace-nowrap text-[#737373]" title={order.createdAt || order.externalCreatedAt ? new Date(order.createdAt || order.externalCreatedAt).toLocaleString() : undefined}>
+                          {orderAge(order)}
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           {renderSegmentActions(order)}
@@ -650,6 +661,7 @@ export default function Orders() {
                         </div>
                         <p className="text-xs font-bold text-[#0a0a0a] mt-1">{customerName}</p>
                         <p className="text-xs text-[#737373] mt-0.5">Vendor: {vendorName}</p>
+                        <p className="text-[10px] text-[#737373] mt-0.5">Ordered {orderAge(order)} ago</p>
                       </div>
                       <div className="text-right shrink-0">
                         <span className="text-sm font-extrabold text-[#dc3545] font-mono">
