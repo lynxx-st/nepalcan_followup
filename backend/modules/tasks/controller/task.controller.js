@@ -1,4 +1,4 @@
-const { Task, Admin } = require('../../../database/models');
+const { Task, Admin, CommerceOrder } = require('../../../database/models');
 const {
   createTaskSchema,
   updateTaskSchema,
@@ -160,6 +160,22 @@ async function skipTask(req, res, next) {
       ...req.body,
       skippedBy: req.user?.name || req.user?.userId || 'staff',
     });
+    if (updated?.sourceOrder?.orderId) {
+      const role = req.user?.role || 'staff';
+      await CommerceOrder.updateOne(
+        { commerceOrderId: updated.sourceOrder.orderId },
+        {
+          $push: {
+            notes: {
+              actor: role === 'admin' || role === 'super-admin' ? 'admin' : 'staff',
+              actorName: req.user?.name || req.user?.email || 'staff',
+              note: `Task skipped: ${req.body?.notes || updated.type || 'task'}`,
+              createdAt: new Date(),
+            },
+          },
+        }
+      );
+    }
     res.json({ success: true, data: updated });
   } catch (error) {
     next(error);

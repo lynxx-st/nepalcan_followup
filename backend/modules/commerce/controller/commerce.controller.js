@@ -34,6 +34,47 @@ function mergeNotes(localNotes = [], apiNotes = []) {
   return [...api, ...app].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }
 
+function statusNote(data) {
+  if (data.note && String(data.note).trim()) return String(data.note).trim();
+  const parts = [];
+  const confMap = {
+    confirmed: 'Customer confirmed order',
+    rejected: 'Customer rejected order',
+    rescheduled: 'Customer call rescheduled',
+  };
+  if (data.confirmationStatus) parts.push(confMap[data.confirmationStatus] || `Customer status set to ${data.confirmationStatus}`);
+  const venMap = {
+    accepted: 'Vendor accepted order',
+    delayed: 'Vendor reported dispatch delay',
+    rescheduled: 'Vendor dispatch rescheduled',
+  };
+  if (data.vendorStatus) parts.push(venMap[data.vendorStatus] || `Vendor status set to ${data.vendorStatus}`);
+  if (data.customerResponseStatus) {
+    parts.push(data.customerResponseStatus === 'confirmed'
+      ? 'Return: customer response confirmed'
+      : `Return: customer response ${data.customerResponseStatus}`);
+  }
+  if (data.vendorResponseStatus) {
+    parts.push(data.vendorResponseStatus === 'accepted'
+      ? 'Return: vendor approval accepted'
+      : `Return: vendor approval ${data.vendorResponseStatus}`);
+  }
+  if (data.orderStatus) parts.push(`Order status changed to ${data.orderStatus}`);
+  if (data.review !== undefined && data.review !== null) parts.push('Review collected');
+  if (data.unrecoverable === true) parts.push('Marked as unrecoverable — no further recovery attempts');
+  if (data.reviewMissed === true) parts.push('Review call: customer did not pick up');
+  return parts.length ? parts.join(' · ') : 'Order status updated';
+}
+
+function noteActor(user) {
+  const role = user?.branchRole || user?.role || 'staff';
+  return {
+    actor: role === 'admin' || role === 'super-admin' ? 'admin' : 'staff',
+    actorName: user?.name || user?.email || 'staff',
+    createdAt: new Date(),
+  };
+}
+
 function buildRbacQuery(user) {
   if (!user) return {};
   switch (user.role) {
@@ -120,7 +161,7 @@ async function getOrders(req, res) {
   try {
     const { 
       segment, search, page, limit, 
-      status, paymentStatus, vendor, customer 
+      status, paymentStatus, vendor, customer, sortBy, sortOrder 
     } = req.query;
     
     await commerceSync.autoUpdateSlaBreachedOrders();
@@ -134,6 +175,8 @@ async function getOrders(req, res) {
       paymentStatus,
       vendor,
       customer,
+      sortBy,
+      sortOrder,
       page: Math.max(1, parseInt(page) || 1),
       limit: Math.min(100, Math.max(1, parseInt(limit) || 20))
     };
@@ -230,6 +273,7 @@ async function getSegmentCounts(req, res) {
       customer_response: 0,
       vendor_response: 0,
       cancelled: 0,
+      unrecoverable: 0,
       hold: 0,
       reviewed: 0,
       other: 0
@@ -238,6 +282,13 @@ async function getSegmentCounts(req, res) {
     for (const c of counts) {
       if (result.hasOwnProperty(c._id)) result[c._id] = c.count;
     }
+
+    const [cancelledActive, unrecoverableCount] = await Promise.all([
+      CommerceOrder.countDocuments({ ...rbacQuery, workflowStage: 'cancelled', unrecoverable: { $ne: true } }),
+      CommerceOrder.countDocuments({ ...rbacQuery, workflowStage: 'cancelled', unrecoverable: true }),
+    ]);
+    result.cancelled = cancelledActive;
+    result.unrecoverable = unrecoverableCount;
     
     res.json({ success: true, data: result });
   } catch (error) {
@@ -496,7 +547,15 @@ async function updateOrderPhone(req, res) {
     const path = type === 'customer' ? 'customer.phone' : 'vendor.phone';
     const updated = await CommerceOrder.findOneAndUpdate(
       { commerceOrderId },
-      { $set: { [path]: phone } },
+      {
+        $set: { [path]: phone },
+        $push: {
+          notes: {
+            ...noteActor(req.user),
+            note: `${type === 'customer' ? 'Customer' : 'Vendor'} phone updated to ${phone}`,
+          },
+        },
+      },
       { new: true }
     );
 
@@ -524,7 +583,7 @@ async function updateOrderPhone(req, res) {
 async function updateOrderStatus(req, res) {
   try {
     const { commerceOrderId } = req.params;
-    const { confirmationStatus, vendorStatus, orderStatus, note, review, scheduledAt, unrecoverable } = req.body;
+    const { confirmationStatus, vendorStatus, orderStatus, note, review, scheduledAt, unrecoverable, reviewMissed } = req.body;
 
     const existing = await CommerceOrder.findOne({ commerceOrderId });
     if (!existing) {
@@ -538,6 +597,7 @@ async function updateOrderStatus(req, res) {
     if (orderStatus) update['commerce.orderStatus'] = orderStatus;
     if (review !== undefined) update['review'] = review;
     if (unrecoverable !== undefined) update['unrecoverable'] = unrecoverable;
+    if (reviewMissed === true) update['reviewMissedAt'] = new Date();
 
     const dm = deliveryMark(existing, orderStatus, existing.externalCreatedAt || existing.sla?.slaCreatedAt || existing.createdAt);
     if (dm) {
@@ -564,7 +624,7 @@ async function updateOrderStatus(req, res) {
       { commerceOrderId },
       {
         $set: update,
-        $push: { statusHistory: historyEntry },
+        $push: { statusHistory: historyEntry, notes: { ...noteActor(req.user), note: statusNote(req.body) } },
       },
       { new: true }
     );
@@ -591,6 +651,13 @@ async function updateOrderStatus(req, res) {
       await Task.updateMany(
         { orderId: commerceOrderId, type: { $in: ['vendor-call', 'vendor-delay'] }, status: { $in: ['pending', 'in-progress', 'overdue'] } },
         { $set: { status: 'completed', outcome: 'Vendor Accepted', completedAt: new Date() } }
+      );
+    }
+
+    if (unrecoverable === true) {
+      await Task.updateMany(
+        { 'sourceOrder.orderId': commerceOrderId, type: 'cancelled-recovery', status: { $in: ['pending', 'in-progress', 'overdue'] } },
+        { $set: { status: 'skipped', outcome: 'Order marked unrecoverable', completedAt: new Date() } }
       );
     }
 

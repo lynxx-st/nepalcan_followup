@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { commerceApi, taskApi } from '../services/api';
 import { useSimulatedTime } from '../hooks/useSimulatedTime';
-import { entityName } from '../utils/order';
+import { entityName, formatDuration } from '../utils/order';
 import Breadcrumbs from '../components/Breadcrumbs';
 import PriorityBadge from '../components/PriorityBadge';
 import SLACountdown from '../components/SLACountdown';
@@ -12,7 +12,7 @@ import LogisticsTimeline from '../components/LogisticsTimeline';
 import {
   ShoppingBag, CheckCircle2, Search, PhoneCall, Store, Zap, Clock,
   PackageCheck, CalendarClock, Truck, ThumbsUp, Eye, XCircle, RotateCcw,
-  Package, FileText
+  Package, FileText, ArrowUp, ArrowDown, ChevronsUpDown, PhoneOff
 } from 'lucide-react';
 
 const STAGE_BUNDLES = [
@@ -81,6 +81,8 @@ export default function Orders() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [segmentCounts, setSegmentCounts] = useState<Record<string, number>>({});
+  const [sortKey, setSortKey] = useState<string>('');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Modals state
   const [reviewOrder, setReviewOrder] = useState<any>(null);
@@ -106,7 +108,9 @@ export default function Orders() {
         limit: PAGE_SIZE,
         page: p,
         segment: activeSegment,
-        search: searchQuery || undefined
+        search: searchQuery || undefined,
+        sortBy: sortKey || undefined,
+        sortOrder: sortDir
       });
       setOrders(data.data?.orders || []);
       setTotal(data.data?.total || 0);
@@ -119,7 +123,7 @@ export default function Orders() {
 
   useEffect(() => {
     fetchOrders(page);
-  }, [page, activeSegment, searchQuery]);
+  }, [page, activeSegment, searchQuery, sortKey, sortDir]);
 
   useEffect(() => {
     const onUpdate = () => {
@@ -130,7 +134,7 @@ export default function Orders() {
     };
     window.addEventListener('orders-updated', onUpdate);
     return () => window.removeEventListener('orders-updated', onUpdate);
-  }, [page, activeSegment, searchQuery]);
+  }, [page, activeSegment, searchQuery, sortKey, sortDir]);
 
   useEffect(() => {
     commerceApi.getSegmentCounts().then(res => {
@@ -146,19 +150,6 @@ export default function Orders() {
       toast.success('Order task skipped');
       fetchOrders(page);
     } catch { toast.error('Failed to skip task'); }
-  };
-
-  const handleMarkDone = async (e: React.MouseEvent, order: any) => {
-    e.stopPropagation();
-    try {
-      await commerceApi.updateStatus(order.commerceOrderId, {
-        confirmationStatus: 'confirmed',
-        vendorStatus: 'accepted',
-        note: 'Marked done from Orders page',
-      });
-      toast.success('Order marked as done');
-      fetchOrders(page);
-    } catch { toast.error('Failed to mark as done'); }
   };
 
   const handleSaveReview = async (reviewData: any) => {
@@ -198,6 +189,40 @@ export default function Orders() {
       hold: `${id}/hold`,
     };
     return `/orders/${stagePaths[order.workflowStage] || id}`;
+  };
+
+  const handleSort = (key: string) => {
+    setPage(1);
+    if (sortKey === key) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+  };
+
+  const orderAge = (order: any) => {
+    const placedAt = order.createdAt || order.externalCreatedAt || order.sla?.slaCreatedAt;
+    if (!placedAt) return '—';
+    const now = simulatedTimeIso ? new Date(simulatedTimeIso) : new Date();
+    return formatDuration(now.getTime() - new Date(placedAt).getTime()) || '—';
+  };
+
+  const renderSortHeader = (key: string, label: string, align: 'left' | 'right' = 'left') => {
+    const active = sortKey === key;
+    const DirIcon = active ? (sortDir === 'asc' ? ArrowUp : ArrowDown) : ChevronsUpDown;
+    return (
+      <th className={`py-3 px-4 ${align === 'right' ? 'text-right' : 'text-left'}`}>
+        <button
+          onClick={() => handleSort(key)}
+          className={`inline-flex items-center gap-1 cursor-pointer hover:text-[#0a0a0a] transition-colors ${align === 'right' ? 'flex-row-reverse' : ''} ${active ? 'text-[#0a0a0a]' : ''}`}
+          title={`Sort by ${label}`}
+        >
+          {label}
+          <DirIcon className={`w-3.5 h-3.5 ${active ? 'text-[#0a0a0a]' : 'text-[#737373]'}`} />
+        </button>
+      </th>
+    );
   };
 
   const renderSegmentActions = (order: any, isMobile = false) => {
@@ -386,12 +411,6 @@ export default function Orders() {
       default:
         return (
           <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={(e) => handleMarkDone(e, order)}
-              className="btn-outline text-xs px-2.5 py-1"
-            >
-              Confirm
-            </button>
             {order.taskId && (
               <button
                 onClick={(e) => handleSkip(e, order)}
@@ -545,41 +564,54 @@ export default function Orders() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-[#fafafa] border-b border-[#e5e5e5] text-[#737373] font-semibold">
-                    <th className="py-3 px-4">Order ID</th>
-                    <th className="py-3 px-4">Customer</th>
-                    <th className="py-3 px-4">Phone</th>
-                    <th className="py-3 px-4">Total Amount</th>
-                    <th className="py-3 px-4">Priority</th>
+                    {renderSortHeader('orderId', 'Order ID')}
+                    {renderSortHeader('customer', 'Customer')}
+                    {renderSortHeader('vendor', 'Vendor')}
+                    {renderSortHeader('totalAmount', 'Total Amount', 'right')}
+                    {renderSortHeader('priority', 'Priority')}
                     <th className="py-3 px-4">SLA Window</th>
+                    <th className="py-3 px-4">Order Age</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#e5e5e5]">
                   {orders.map((order: any) => {
                     const customerName = entityName(order.customer?.name) || 'Customer';
+                    const vendorName = entityName(order.vendor?.name) || order.vendorName || '—';
                     return (
                       <tr
                         key={order.commerceOrderId || order._id}
                         onClick={() => navigate(getStagePath(order))}
                         className="hover:bg-[#fafafa] transition-colors cursor-pointer"
                       >
-                        <td className="py-3.5 px-4 font-bold text-[#0a0a0a]">
+                        <td className="py-3.5 px-4 font-bold text-[#0a0a0a] whitespace-nowrap">
                           #{order.orderId || order.commerceOrderId}
                         </td>
-                        <td className="py-3.5 px-4 font-medium text-[#0a0a0a]">
+                        <td className="py-3.5 px-4 font-medium text-[#0a0a0a] truncate max-w-[160px]" title={customerName}>
                           {customerName}
                         </td>
-                        <td className="py-3.5 px-4 text-[#737373]">
-                          {order.customerPhone || order.customer?.phone || 'N/A'}
+                        <td className="py-3.5 px-4 text-[#737373] truncate max-w-[160px]" title={vendorName}>
+                          {vendorName}
                         </td>
-                        <td className="py-3.5 px-4 font-bold text-[#0a0a0a]">
+                        <td className="py-3.5 px-4 text-right font-bold text-[#0a0a0a] whitespace-nowrap">
                           Rs. {getTotalAmount(order).toLocaleString()}
                         </td>
                         <td className="py-3.5 px-4">
-                          <PriorityBadge priority={order.priority || 'medium'} />
+                          <div className="flex items-center gap-1.5">
+                            <PriorityBadge priority={order.priority || 'medium'} />
+                            {activeSegment === 'pending_review' && order.reviewMissedAt && (
+                              <span className="hidden lg:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[9px] font-semibold uppercase" title={`Didn't pick up · ${new Date(order.reviewMissedAt).toLocaleString()}`}>
+                                <PhoneOff className="w-2.5 h-2.5" />
+                                No pick-up
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3.5 px-4">
                           <SLACountdown dueAt={order.dueAt} />
+                        </td>
+                        <td className="py-3.5 px-4 whitespace-nowrap text-[#737373]" title={order.createdAt || order.externalCreatedAt ? new Date(order.createdAt || order.externalCreatedAt).toLocaleString() : undefined}>
+                          {orderAge(order)}
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           {renderSegmentActions(order)}
@@ -595,7 +627,7 @@ export default function Orders() {
             <div className="md:hidden space-y-3">
               {orders.map((order: any) => {
                 const customerName = entityName(order.customer?.name) || 'Customer';
-                const phone = order.customerPhone || order.customer?.phone || 'N/A';
+                const vendorName = entityName(order.vendor?.name) || order.vendorName || '—';
                 const cs = order.confirmationStatus || 'pending';
                 const vs = order.vendorStatus || 'unassigned';
 
@@ -613,6 +645,11 @@ export default function Orders() {
                             #{order.orderId || order.commerceOrderId}
                           </span>
                           <PriorityBadge priority={order.priority || 'medium'} showLabel={false} />
+                          {activeSegment === 'pending_review' && order.reviewMissedAt && (
+                            <span className="badge-pill bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-semibold" title={new Date(order.reviewMissedAt).toLocaleString()}>
+                              Didn't Pick Up
+                            </span>
+                          )}
                           {order.unrecoverable && (
                             <span className="badge-pill bg-[#737373] text-white border border-[#737373] text-[10px] font-bold">
                               Unrecoverable
@@ -623,7 +660,8 @@ export default function Orders() {
                           </span>
                         </div>
                         <p className="text-xs font-bold text-[#0a0a0a] mt-1">{customerName}</p>
-                        <p className="text-xs text-[#737373] mt-0.5">Phone: {phone}</p>
+                        <p className="text-xs text-[#737373] mt-0.5">Vendor: {vendorName}</p>
+                        <p className="text-[10px] text-[#737373] mt-0.5">Ordered {orderAge(order)} ago</p>
                       </div>
                       <div className="text-right shrink-0">
                         <span className="text-sm font-extrabold text-[#dc3545] font-mono">
