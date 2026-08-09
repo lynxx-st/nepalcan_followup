@@ -211,7 +211,7 @@ async function getNextTask(req, res, next) {
 
 async function getNextAdvanced(req, res, next) {
   try {
-    const limit = Math.min(Number(req.query.limit) || 1, 50);
+    const limit = Math.min(Number(req.query.limit) || 1, 200);
     const result = await taskService.getNextAdvanced(req.query.assigneeId || req.user?.userId, limit);
     res.json({ success: true, data: result });
   } catch (error) {

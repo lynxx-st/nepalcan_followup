@@ -204,4 +204,9 @@ export const attendanceApi = {
   checkOut: (notes?: string) => api.post('/v1/attendance/check-out', { notes }),
 };
 
+export const callLogApi = {
+  create: (data: Record<string, any>) => api.post('/v1/call-logs', data),
+  listByTask: (taskId: string) => api.get(`/v1/call-logs/task/${taskId}`),
+};
+
 export default api;
