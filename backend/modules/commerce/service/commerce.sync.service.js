@@ -610,6 +610,7 @@ class CommerceSyncService {
 
   getPriorityForOrder(order) {
     const c = order.commerce || {};
+    if (order.unrecoverable) return null;
     const orderStatus = c.orderStatus || order.orderStatus;
     const paymentStatus = c.paymentStatus || order.paymentStatus;
     const paymentMethod = c.paymentMethod || order.paymentMethod;
@@ -808,14 +809,24 @@ class CommerceSyncService {
   }
 
   async getOrders(filters = {}) {
-    const { status, paymentStatus, vendor, customer, segment, search, page = 1, limit = 20, rbac } = filters;
+    const { status, paymentStatus, vendor, customer, segment, search, sortBy, sortOrder, page = 1, limit = 20, rbac } = filters;
     const query = {};
 
     if (rbac && Object.keys(rbac).length) {
       query.$and = [rbac];
     }
 
-    if (segment) query.workflowStage = segment;
+    if (segment) {
+      if (segment === 'cancelled') {
+        query.workflowStage = 'cancelled';
+        query.unrecoverable = { $ne: true };
+      } else if (segment === 'unrecoverable') {
+        query.workflowStage = 'cancelled';
+        query.unrecoverable = true;
+      } else {
+        query.workflowStage = segment;
+      }
+    }
 
     if (status) {
       query.$and = [
@@ -863,9 +874,29 @@ class CommerceSyncService {
 
     const skip = (page - 1) * limit;
 
+    const SORT_FIELDS = {
+      orderId: 'orderId',
+      customer: 'customer.name',
+      vendor: 'vendor.name',
+      priority: 'priority',
+      createdAt: 'createdAt',
+      totalAmount: ['totalAmount', 'commerce.totalAmount'],
+    };
+    const dir = sortOrder === 'asc' ? 1 : -1;
+    let sort = { externalUpdatedAt: -1 };
+    const sortField = SORT_FIELDS[sortBy];
+    if (sortField) {
+      sort = Array.isArray(sortField)
+        ? { [sortField[0]]: dir, [sortField[1]]: dir }
+        : { [sortField]: dir };
+    } else if (segment === 'pending_review') {
+      // ponytail: sink orders where the customer didn't pick up the review call
+      sort = { reviewMissedAt: 1, externalUpdatedAt: -1 };
+    }
+
     const [orders, total] = await Promise.all([
       CommerceOrder.find(query)
-        .sort({ externalUpdatedAt: -1 })
+        .sort(sort)
         .skip(skip)
         .limit(limit)
         .lean(),

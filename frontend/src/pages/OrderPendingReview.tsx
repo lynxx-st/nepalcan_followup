@@ -85,6 +85,16 @@ export default function OrderPendingReview() {
     fetchDetail();
   };
 
+  const handleDidNotPickUp = async () => {
+    await updateStatus({
+      reviewMissed: true,
+      note: 'Review call: Customer did not pick up the call',
+    });
+    await noteApi.addOrderNote(commerceOrderId!, 'Customer did not pick up the review call');
+    await fetchDetail();
+    window.dispatchEvent(new Event('orders-updated'));
+  };
+
   const handleSavePhone = async () => {
     if (!newPhone.trim() || !commerceOrderId) return;
     try {
@@ -262,6 +272,15 @@ export default function OrderPendingReview() {
           )}
 
           {/* Action Buttons */}
+          {order.reviewMissedAt && (
+            <div className="flex items-center gap-2 text-[11px] font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2">
+              <PhoneOff className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <span>
+                Customer didn't pick up the review call
+                <span className="text-[#737373]"> · {new Date(order.reviewMissedAt).toLocaleString()}</span>
+              </span>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2 pt-2">
             {customerPhone !== 'N/A' && (
               <button onClick={() => callPhone(customerPhone)} className="btn-primary text-xs px-4 py-2 cursor-pointer flex items-center gap-1.5 min-h-[44px]">
@@ -275,6 +294,14 @@ export default function OrderPendingReview() {
             >
               <ThumbsUp className="w-3.5 h-3.5" />
               <span>Get Review</span>
+            </button>
+            <button
+              onClick={handleDidNotPickUp}
+              disabled={saving}
+              className="btn-outline text-xs text-slate-600 border-slate-300 bg-slate-50 px-4 py-2 cursor-pointer flex items-center gap-1.5 min-h-[44px] disabled:opacity-50"
+            >
+              <PhoneOff className="w-3.5 h-3.5" />
+              <span>Didn't Pick Up</span>
             </button>
           </div>
 
@@ -353,6 +380,14 @@ export default function OrderPendingReview() {
         >
           <ThumbsUp className="w-3.5 h-3.5" />
           <span>Review</span>
+        </button>
+        <button
+          onClick={handleDidNotPickUp}
+          disabled={saving}
+          className="btn-outline text-xs flex-1 py-2.5 text-slate-600 border-slate-300 bg-slate-50 justify-center min-h-[44px] disabled:opacity-50"
+        >
+          <PhoneOff className="w-3.5 h-3.5" />
+          <span>No Pick Up</span>
         </button>
       </div>
     </div>

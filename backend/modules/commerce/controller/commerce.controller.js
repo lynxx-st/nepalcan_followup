@@ -120,7 +120,7 @@ async function getOrders(req, res) {
   try {
     const { 
       segment, search, page, limit, 
-      status, paymentStatus, vendor, customer 
+      status, paymentStatus, vendor, customer, sortBy, sortOrder 
     } = req.query;
     
     await commerceSync.autoUpdateSlaBreachedOrders();
@@ -134,6 +134,8 @@ async function getOrders(req, res) {
       paymentStatus,
       vendor,
       customer,
+      sortBy,
+      sortOrder,
       page: Math.max(1, parseInt(page) || 1),
       limit: Math.min(100, Math.max(1, parseInt(limit) || 20))
     };
@@ -230,6 +232,7 @@ async function getSegmentCounts(req, res) {
       customer_response: 0,
       vendor_response: 0,
       cancelled: 0,
+      unrecoverable: 0,
       hold: 0,
       reviewed: 0,
       other: 0
@@ -238,6 +241,13 @@ async function getSegmentCounts(req, res) {
     for (const c of counts) {
       if (result.hasOwnProperty(c._id)) result[c._id] = c.count;
     }
+
+    const [cancelledActive, unrecoverableCount] = await Promise.all([
+      CommerceOrder.countDocuments({ ...rbacQuery, workflowStage: 'cancelled', unrecoverable: { $ne: true } }),
+      CommerceOrder.countDocuments({ ...rbacQuery, workflowStage: 'cancelled', unrecoverable: true }),
+    ]);
+    result.cancelled = cancelledActive;
+    result.unrecoverable = unrecoverableCount;
     
     res.json({ success: true, data: result });
   } catch (error) {
@@ -524,7 +534,7 @@ async function updateOrderPhone(req, res) {
 async function updateOrderStatus(req, res) {
   try {
     const { commerceOrderId } = req.params;
-    const { confirmationStatus, vendorStatus, orderStatus, note, review, scheduledAt, unrecoverable } = req.body;
+    const { confirmationStatus, vendorStatus, orderStatus, note, review, scheduledAt, unrecoverable, reviewMissed } = req.body;
 
     const existing = await CommerceOrder.findOne({ commerceOrderId });
     if (!existing) {
@@ -538,6 +548,7 @@ async function updateOrderStatus(req, res) {
     if (orderStatus) update['commerce.orderStatus'] = orderStatus;
     if (review !== undefined) update['review'] = review;
     if (unrecoverable !== undefined) update['unrecoverable'] = unrecoverable;
+    if (reviewMissed === true) update['reviewMissedAt'] = new Date();
 
     const dm = deliveryMark(existing, orderStatus, existing.externalCreatedAt || existing.sla?.slaCreatedAt || existing.createdAt);
     if (dm) {
@@ -591,6 +602,13 @@ async function updateOrderStatus(req, res) {
       await Task.updateMany(
         { orderId: commerceOrderId, type: { $in: ['vendor-call', 'vendor-delay'] }, status: { $in: ['pending', 'in-progress', 'overdue'] } },
         { $set: { status: 'completed', outcome: 'Vendor Accepted', completedAt: new Date() } }
+      );
+    }
+
+    if (unrecoverable === true) {
+      await Task.updateMany(
+        { 'sourceOrder.orderId': commerceOrderId, type: 'cancelled-recovery', status: { $in: ['pending', 'in-progress', 'overdue'] } },
+        { $set: { status: 'skipped', outcome: 'Order marked unrecoverable', completedAt: new Date() } }
       );
     }
 
