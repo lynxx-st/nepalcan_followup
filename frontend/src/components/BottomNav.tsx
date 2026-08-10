@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  CheckSquare, Zap, ShoppingBag, RotateCcw, MoreHorizontal, X, LogOut, Download,
+  CheckSquare, Zap, ShoppingBag, RotateCcw, MoreHorizontal, X, LogOut, Download, XCircle,
 } from 'lucide-react';
 import { attendanceApi } from '../services/api';
 import { toast } from 'sonner';
@@ -18,6 +18,7 @@ const NAV_LINKS = [
   { to: '/today', label: "Today's Work", icon: CheckSquare },
   { to: '/next', label: 'Next Call', icon: Zap },
   { to: '/orders', label: 'Orders', icon: ShoppingBag },
+  { to: '/cancelled-orders', label: 'Cancelled', icon: XCircle },
   { to: '/returns', label: 'Returns', icon: RotateCcw },
   { to: '/reviews', label: 'Reviews', icon: CheckSquare },
   { to: '/recovery', label: 'Recovery', icon: RotateCcw },

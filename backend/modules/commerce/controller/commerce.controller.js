@@ -273,6 +273,7 @@ async function getSegmentCounts(req, res) {
       customer_response: 0,
       vendor_response: 0,
       cancelled: 0,
+      system_cancelled: 0,
       unrecoverable: 0,
       hold: 0,
       reviewed: 0,
@@ -283,11 +284,13 @@ async function getSegmentCounts(req, res) {
       if (result.hasOwnProperty(c._id)) result[c._id] = c.count;
     }
 
-    const [cancelledActive, unrecoverableCount] = await Promise.all([
-      CommerceOrder.countDocuments({ ...rbacQuery, workflowStage: 'cancelled', unrecoverable: { $ne: true } }),
-      CommerceOrder.countDocuments({ ...rbacQuery, workflowStage: 'cancelled', unrecoverable: true }),
+    const [cancelledActive, unrecoverableCount, systemCancelled] = await Promise.all([
+      CommerceOrder.countDocuments({ ...rbacQuery, workflowStage: 'cancelled', unrecoverable: { $ne: true }, 'commerce.cancelledBy': 'Customer' }),
+      CommerceOrder.countDocuments({ ...rbacQuery, workflowStage: 'cancelled', unrecoverable: true, 'commerce.cancelledBy': { $exists: true } }),
+      CommerceOrder.countDocuments({ ...rbacQuery, workflowStage: 'cancelled', unrecoverable: { $ne: true }, 'commerce.cancelledBy': { $exists: true, $ne: 'Customer' } }),
     ]);
     result.cancelled = cancelledActive;
+    result.system_cancelled = systemCancelled;
     result.unrecoverable = unrecoverableCount;
     
     res.json({ success: true, data: result });
