@@ -808,9 +808,15 @@ class CommerceSyncService {
       if (segment === 'cancelled') {
         query.workflowStage = 'cancelled';
         query.unrecoverable = { $ne: true };
+        query['commerce.cancelledBy'] = 'Customer';
+      } else if (segment === 'system_cancelled') {
+        query.workflowStage = 'cancelled';
+        query.unrecoverable = { $ne: true };
+        query['commerce.cancelledBy'] = { $exists: true, $ne: 'Customer' };
       } else if (segment === 'unrecoverable') {
         query.workflowStage = 'cancelled';
         query.unrecoverable = true;
+        query['commerce.cancelledBy'] = { $exists: true };
       } else {
         query.workflowStage = segment;
       }

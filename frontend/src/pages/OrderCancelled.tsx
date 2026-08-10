@@ -45,7 +45,7 @@ export default function OrderCancelled() {
 
   const fetchCampaign = async () => {
     try {
-      const res: any = await commerceApi.getOrders({ segment: 'cancelled', limit: 1, search: commerceOrderId });
+      const res: any = await commerceApi.getOrders({ limit: 1, search: commerceOrderId });
       const found = (res?.data?.orders || []).find((o: any) => o.commerceOrderId === commerceOrderId);
       if (found?.recoveryCampaign) setCampaign(found.recoveryCampaign);
     } catch { /* campaign is optional context */ }

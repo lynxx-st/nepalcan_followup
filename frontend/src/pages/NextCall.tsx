@@ -30,7 +30,7 @@ function personOf(order: any, task: any) {
   const phone = `${customer.phone || order?.customerPhone || order?.customerProfile?.phone || task?.customerPhone || ''}`.replace(/^[^0-9+]+/, '');
   const vendorName = vendor.name || order?.vendorName || '';
   const vendorPhone = `${vendor.phone || order?.vendorPhone || ''}`.replace(/^[^0-9+]+/, '');
-  const branch = order?.branch || order?.commerce?.branch || order?.commerce?.sender?.name || '';
+  const branch = entityName(order?.branch) || entityName(order?.commerce?.branch) || entityName(order?.commerce?.sender) || '';
   return { name: name || phone || 'Customer', phone, vendorName, vendorPhone, branch };
 }
 
@@ -140,8 +140,7 @@ function TaskListCard({ item, onOutcome, onSkip }: { item: QueueItem; onOutcome:
   const queueKey = workflowStageToQueue(workflowStage);
 
   return (
-    <div className="relative bg-white border border-[#e5e5e5] rounded-[24px] overflow-hidden transition-all hover:border-[#0a0a0a]/40">
-      {path && <a href={path} target="_blank" rel="noopener noreferrer" aria-label={`Open ${orderNo || 'order'}`} className="absolute inset-0 z-10 rounded-[24px]" />}
+    <div className="relative bg-white border border-[#e5e5e5] rounded-[24px] overflow-hidden transition-all hover:border-[#0a0a0a]/40" onClick={() => path && navigate(path)}>
       <div className="relative z-20 pointer-events-none flex flex-col gap-3 p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3">
           <MetaChips item={item} />
@@ -243,7 +242,7 @@ function SwipeCard({ item, onOpen, onOutcome, onSkip, onReschedule }: { item: Qu
 
   return (
     <div
-      className="relative w-full max-w-md mx-auto bg-white border border-[#e5e5e5] rounded-[28px] overflow-hidden shadow-xl select-none"
+      className="relative w-full max-w-md mx-auto bg-white border border-[#e5e5e5] rounded-[28px] overflow-hidden shadow-xl select-none cursor-pointer"
       style={{ transform: `translate(${offset.x}px, ${offset.y}px) rotate(${rotate}deg)`, transition: dragging ? 'none' : 'transform 0.3s ease' }}
       onTouchStart={(e) => onStart(e.touches[0].clientX, e.touches[0].clientY)}
       onTouchMove={(e) => onMove(e.touches[0].clientX, e.touches[0].clientY)}
@@ -252,6 +251,7 @@ function SwipeCard({ item, onOpen, onOutcome, onSkip, onReschedule }: { item: Qu
       onMouseMove={(e) => dragging && onMove(e.clientX, e.clientY)}
       onMouseUp={onEnd}
       onMouseLeave={() => { setDragging(false); setOffset({ x: 0, y: 0 }); }}
+      onClick={() => !dragging && path && onOpen(item)}
     >
       <div className={`absolute inset-0 flex items-center justify-center pointer-events-none z-30 transition-opacity ${offset.x > 0 ? 'opacity-100' : 'opacity-0'}`}>
         <span className="text-2xl font-extrabold text-[#0a0a0a] border-4 border-[#0a0a0a] rounded-2xl px-4 py-2 -rotate-12">OPEN</span>
@@ -264,8 +264,6 @@ function SwipeCard({ item, onOpen, onOutcome, onSkip, onReschedule }: { item: Qu
           <ChevronUp className="w-3.5 h-3.5" /> Reschedule
         </span>
       </div>
-
-      {path && <a href={path} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-10 rounded-[28px]" />}
 
       <div className="relative z-20 p-5 sm:p-6 flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">

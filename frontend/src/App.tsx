@@ -7,6 +7,7 @@ import BottomNav from './components/BottomNav';
 import TodayWork from './pages/TodayWork';
 import NextCall from './pages/NextCall';
 import Orders from './pages/Orders';
+import CancelledOrders from './pages/CancelledOrders';
 import OrderDetail from './pages/OrderDetail';
 import OrderCollectedByLogistics from './pages/OrderCollectedByLogistics';
 import OrderConfirmedUnprocessed from './pages/OrderConfirmedUnprocessed';
@@ -36,6 +37,7 @@ function AppRoutes() {
       <Route path="/today" element={<TodayWork />} />
       <Route path="/next" element={<NextCall />} />
       <Route path="/orders" element={<Orders />} />
+      <Route path="/cancelled-orders" element={<CancelledOrders />} />
       <Route path="/orders/:commerceOrderId" element={<OrderDetail />} />
       <Route path="/orders/:commerceOrderId/confirmed-unprocessed" element={<OrderConfirmedUnprocessed />} />
       <Route path="/orders/:commerceOrderId/collected-by-logistics" element={<OrderCollectedByLogistics />} />

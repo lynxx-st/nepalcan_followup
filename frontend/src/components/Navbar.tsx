@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   CheckSquare, Zap, Sliders, RotateCcw, ShoppingBag, BarChart3,
   Clock, PlusCircle, Search, Menu, X, LogOut, Bell, Settings, RefreshCw, Users, Star,
-  LogIn, UserCheck, Play, Square,
+  LogIn, UserCheck, Play, Square, XCircle,
 } from 'lucide-react';
 import { useSimulatedTime } from '../hooks/useSimulatedTime';
 import { io, Socket } from 'socket.io-client';
@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { to: '/today', label: "Today's Work", icon: CheckSquare },
   { to: '/next', label: 'Next Call', icon: Zap },
   { to: '/orders', label: 'Orders', icon: ShoppingBag },
+  { to: '/cancelled-orders', label: 'Cancelled Orders', icon: XCircle },
   { to: '/returns', label: 'Returns', icon: RotateCcw },
   { to: '/reviews', label: 'Reviews', icon: Star },
   { to: '/recovery', label: 'Recovery', icon: RotateCcw },
