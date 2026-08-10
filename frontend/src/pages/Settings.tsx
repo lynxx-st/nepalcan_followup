@@ -11,6 +11,7 @@ const FIELDS = [
   { key: 'cancelledRecoverySlaMinutes', label: 'Cancelled Recovery SLA (min)', desc: 'Recovery attempt for cancelled orders — SLA in minutes. Task turns critical past this.', type: 'number' },
   { key: 'reviewCallSlaMinutes', label: 'Review Call SLA (min)', desc: 'Review call for delivered orders — SLA in minutes (default 24h). Task overdue past this.', type: 'number' },
   { key: 'reviewFollowupDelayHours', label: 'Review Follow-up Delay (Hours)', desc: 'After how many hours does the order come up in pending review calls after being delivered.', type: 'number' },
+  { key: 'pendingReviewStartDate', label: 'Pending Review Start Date', desc: 'Orders placed before this date are hidden from After Delivery → Pending Review Calls. Leave empty to show all.', type: 'date' },
   { key: 'returnCustomerResponseSlaMinutes', label: 'Return Customer Response SLA (min)', desc: 'SLA in minutes for contacting customer after return request is initiated.', type: 'number' },
   { key: 'returnVendorResponseSlaMinutes', label: 'Return Vendor Response SLA (min)', desc: 'SLA in minutes for obtaining vendor response/approval for return.', type: 'number' },
   { key: 'escalationSlaMinutes', label: 'Escalation SLA (min)', desc: 'SLA in minutes for escalation tasks.', type: 'number' },

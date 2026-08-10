@@ -151,6 +151,7 @@ class CommerceSyncService {
       if (settings.vendorCallSlaMinutes) this.slaDefaults['vendor-call'] = settings.vendorCallSlaMinutes;
       if (settings.cancelledRecoverySlaMinutes) this.slaDefaults['cancelled-recovery'] = settings.cancelledRecoverySlaMinutes;
       if (settings.reviewFollowupDelayHours !== undefined) this.reviewFollowupDelayHours = settings.reviewFollowupDelayHours;
+      if (settings.pendingReviewStartDate) this.pendingReviewStartDate = settings.pendingReviewStartDate;
       if (settings.returnCustomerResponseSlaMinutes) this.slaDefaults['return-customer-response'] = settings.returnCustomerResponseSlaMinutes;
       if (settings.returnVendorResponseSlaMinutes) this.slaDefaults['return-vendor-response'] = settings.returnVendorResponseSlaMinutes;
       if (settings.reviewCallSlaMinutes) this.slaDefaults['review-call'] = settings.reviewCallSlaMinutes;
@@ -797,6 +798,7 @@ class CommerceSyncService {
   }
 
   async getOrders(filters = {}) {
+    await this.loadSettings();
     const { status, paymentStatus, vendor, customer, segment, search, sortBy, sortOrder, page = 1, limit = 20, rbac } = filters;
     const query = {};
 
@@ -817,6 +819,9 @@ class CommerceSyncService {
         query.workflowStage = 'cancelled';
         query.unrecoverable = true;
         query['commerce.cancelledBy'] = { $exists: true };
+      } else if (segment === 'pending_review' && this.pendingReviewStartDate) {
+        query.workflowStage = 'pending_review';
+        query.externalCreatedAt = { $gte: new Date(this.pendingReviewStartDate) };
       } else {
         query.workflowStage = segment;
       }

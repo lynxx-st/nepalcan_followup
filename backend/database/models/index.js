@@ -615,6 +615,7 @@ const defaultSettings = {
   cancelledRecoverySlaMinutes: { value: 15, description: 'SLA in minutes for cancelled recovery tasks' },
   reviewCallSlaMinutes: { value: 1440, description: 'SLA in minutes for review call tasks (24h)' },
   reviewFollowupDelayHours: { value: 24, description: 'Hours after an order is Delivered before it appears in Pending Review calls' },
+  pendingReviewStartDate: { value: '', description: 'Orders placed before this date are hidden from Pending Review Calls. Empty = show all.' },
   returnCustomerResponseSlaMinutes: { value: 60, description: 'SLA in minutes for return customer response tasks' },
   returnVendorResponseSlaMinutes: { value: 120, description: 'SLA in minutes for return vendor response tasks' },
   escalationSlaMinutes: { value: 10, description: 'SLA in minutes for escalation tasks' },
