@@ -648,6 +648,34 @@ const SettingSchema = new mongoose.Schema({
   collection: 'settings',
 });
 
+async function seedAdmin() {
+  const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD;
+  if (!email || !password) return;
+
+  const bcrypt = require('bcryptjs');
+  const Admin = mongoose.model('Admin');
+  const existing = await Admin.findOne({ email });
+  if (existing) {
+    // Ensure existing admin is active and verified
+    let needsUpdate = false;
+    if (!existing.isActive) { existing.isActive = true; needsUpdate = true; }
+    if (!existing.isVerified) { existing.isVerified = true; needsUpdate = true; }
+    if (needsUpdate) await existing.save();
+    return;
+  }
+
+  await Admin.create({
+    email,
+    name: 'Super Admin',
+    passwordHash: await bcrypt.hash(password, 12),
+    role: 'super-admin',
+    isActive: true,
+    isVerified: true,
+  });
+  console.log(`[seed] Admin created: ${email}`);
+}
+
 async function seedSettings() {
   const zoneDef = defaultSettings.deliveryZones;
   if (zoneDef) {
@@ -796,5 +824,6 @@ module.exports = {
   connectDatabase,
   disconnectDatabase,
   seedSettings,
+  seedAdmin,
   defaultSettings,
 };

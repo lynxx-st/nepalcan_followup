@@ -15,7 +15,11 @@ async function seedAdmin() {
 
   const existing = await Admin.findOne({ email });
   if (existing) {
-    console.log(`[seed] Admin ${email} already exists (id: ${existing._id})`);
+    let needsUpdate = false;
+    if (!existing.isActive) { existing.isActive = true; needsUpdate = true; }
+    if (!existing.isVerified) { existing.isVerified = true; needsUpdate = true; }
+    if (needsUpdate) { await existing.save(); console.log(`[seed] Admin ${email} updated (isActive + isVerified)`); }
+    else { console.log(`[seed] Admin ${email} already exists (id: ${existing._id})`); }
     await disconnectDatabase();
     return;
   }
@@ -25,6 +29,7 @@ async function seedAdmin() {
     name: 'Super Admin',
     passwordHash: await bcrypt.hash(password, 12),
     role: 'super-admin',
+    isActive: true,
     isVerified: true,
   });
 
