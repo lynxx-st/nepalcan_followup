@@ -26,5 +26,6 @@ router.get('/returns', authenticate, commerceController.getReturns);
 router.get('/returns/attachment', authenticate, commerceController.getReturnAttachment);
 router.put('/returns/:returnId/status', authenticate, commerceController.updateReturnStatus);
 router.post('/sync/returns', authenticate, internalLimiter, commerceController.syncReturns);
+router.post('/sync/recompute-stages', internalLimiter, commerceController.recomputeStages);
 
 module.exports = router;

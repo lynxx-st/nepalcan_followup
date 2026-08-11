@@ -21,7 +21,7 @@ function computeWorkflowStage(order) {
   const vs = order.vendorStatus || order.vendor?.vendorStatus || 'unassigned';
   const os = (order.orderStatus || order.commerce?.orderStatus || '').toLowerCase();
 
-  if (cs === 'rescheduled' || vs === 'rescheduled') return 'rescheduled';
+  if (['rescheduled', 'no_answer', 'call_later'].includes(cs) || ['rescheduled', 'no_answer', 'call_later'].includes(vs)) return 'rescheduled';
   if (os === 'shipped') return 'shipped';
   if (['delivered', 'return delivered'].includes(os)) return 'delivered_followup';
   if (os === 'processing') return 'confirmed_unprocessed';

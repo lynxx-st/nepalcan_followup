@@ -905,6 +905,32 @@ async function syncReturns(req, res) {
   }
 }
 
+async function recomputeStages(req, res) {
+  try {
+    const startTime = Date.now();
+    const orders = await CommerceOrder.find({}).lean();
+    const bulkOps = [];
+    for (const order of orders) {
+      const stage = commerceSync.computeWorkflowStage(order);
+      const priority = commerceSync.computeWorkflowPriority(order);
+      if (order.workflowStage !== stage || order.workflowPriority !== priority) {
+        bulkOps.push({
+          updateOne: {
+            filter: { _id: order._id },
+            update: { $set: { workflowStage: stage, workflowPriority: priority, workflowUpdatedAt: new Date() } },
+          },
+        });
+      }
+    }
+    if (bulkOps.length > 0) {
+      await CommerceOrder.bulkWrite(bulkOps);
+    }
+    res.json({ success: true, data: { recomputed: bulkOps.length, total: orders.length, durationMs: Date.now() - startTime } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: error.message } });
+  }
+}
+
 module.exports = {
   computeReturnStage,
   login,
@@ -927,5 +953,6 @@ module.exports = {
   getReturns,
   getReturnAttachment,
   updateReturnStatus,
+  recomputeStages,
   syncReturns,
 };

@@ -5,7 +5,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const { Server } = require('socket.io');
 const config = require('./config');
-const { connectDatabase, mongoose, seedSettings } = require('./database/models');
+const { connectDatabase, mongoose, seedSettings, seedAdmin } = require('./database/models');
 const seedTaskRules = require('./modules/rules/seed/seed-rules.service');
 const { errorHandler, notFoundHandler } = require('./src/middleware');
 
@@ -75,6 +75,7 @@ app.use(errorHandler);
 const startServer = async () => {
   try {
     await connectDatabase(config.mongoUri);
+    await seedAdmin();
     await seedSettings();
     await seedTaskRules();
     console.log('Follow-up engine ready');
