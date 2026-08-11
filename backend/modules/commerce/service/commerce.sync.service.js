@@ -725,7 +725,7 @@ class CommerceSyncService {
     const vs = order.vendor?.vendorStatus || order.vendorStatus || 'unassigned';
     const os = (order.commerce?.orderStatus || order.orderStatus || '').toLowerCase();
 
-    if (cs === 'rescheduled' || vs === 'rescheduled') return 'rescheduled';
+    if (['rescheduled', 'no_answer', 'call_later'].includes(cs) || ['rescheduled', 'no_answer', 'call_later'].includes(vs)) return 'rescheduled';
     if (os === 'cancelled') return 'cancelled';
     if (os === 'hold') return 'hold';
     if (os === 'shipped') return 'shipped';
@@ -785,7 +785,7 @@ class CommerceSyncService {
       pending_review: 'review-call',
       customer_response: 'return-customer-response',
       vendor_response: 'return-vendor-response',
-      rescheduled: 'cancelled-recovery',
+      rescheduled: 'customer-confirmation',
       cancelled: 'cancelled-recovery',
       hold: 'customer-confirmation',
     };
