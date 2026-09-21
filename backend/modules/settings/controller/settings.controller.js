@@ -58,7 +58,14 @@ async function updateSettings(req, res, next) {
     if (!updates || Object.keys(updates).length === 0) {
       return res.status(400).json({ success: false, error: { message: 'No settings provided' } });
     }
+    if (updates.confirmationOrder !== undefined && !['customer_first', 'vendor_first'].includes(updates.confirmationOrder)) {
+      return res.status(400).json({ success: false, error: { message: 'Choose Customer first or Vendor first' } });
+    }
     const settings = await settingsService.update(updates);
+    if (updates.confirmationOrder !== undefined) {
+      await require('../../commerce/service/commerce.sync.service').commerceSync.loadSettings();
+      await require('../../workspace/service').reconcileOrderStages();
+    }
     res.json({ success: true, data: settings });
   } catch (error) {
     next(error);

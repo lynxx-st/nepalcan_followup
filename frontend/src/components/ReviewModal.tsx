@@ -18,7 +18,7 @@ interface ReviewModalProps {
   orderId: string;
 }
 
-const QUESTIONS = [
+const QUESTIONS: {key: keyof ReviewData;label:string;otherKey:keyof ReviewData}[] = [
   {
     key: 'platformSatisfied',
     label: 'Satisfied with the platform?',

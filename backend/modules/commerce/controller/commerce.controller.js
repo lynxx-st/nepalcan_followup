@@ -75,30 +75,12 @@ function noteActor(user) {
   };
 }
 
-function buildRbacQuery(user) {
-  if (!user) return {};
-  switch (user.role) {
-    case 'super-admin':
-      return {};
-    case 'admin':
-      return user.branches?.length
-        ? {
-            $or: [
-              { branch: { $in: user.branches } },
-              { 'branch.name': { $in: user.branches } },
-              { 'commerce.branch': { $in: user.branches } },
-              { 'commerce.branch.name': { $in: user.branches } },
-            ],
-          }
-        : {};
-    case 'manager':
-      return user.team
-        ? { $or: [{ team: user.team }, { assignedTo: user._id }, { assignedTo: { $exists: false } }] }
-        : { $or: [{ assignedTo: user._id }, { assignedTo: { $exists: false } }] };
-    case 'staff':
-    default:
-      return { $or: [{ assignedTo: user._id }, { assignedTo: { $exists: false } }] };
-  }
+async function buildRbacQuery(user) {
+  if (!user) return {commerceOrderId:{$in:[]}};
+  if (['super-admin','admin'].includes(user.role)) return {};
+  const taskScope = require('../../workspace/service').scope(user);
+  const ids = await Task.distinct('sourceOrder.orderId',taskScope);
+  return {commerceOrderId:{$in:ids}};
 }
 
 async function login(req, res) {
@@ -165,10 +147,10 @@ async function getOrders(req, res) {
     } = req.query;
     
     await commerceSync.autoUpdateSlaBreachedOrders();
-    const rbacQuery = buildRbacQuery(req.user);
+    const rbacQuery = await buildRbacQuery(req.user);
     
     const filters = {
-      rbac: buildRbacQuery(req.user),
+      rbac: rbacQuery,
       segment,
       search,
       status,
@@ -198,7 +180,7 @@ async function getReviews(req, res) {
     const query = {
       review: { $nin: [null, ''] },
     };
-    const rbac = buildRbacQuery(req.user);
+    const rbac = await buildRbacQuery(req.user);
     if (rbac && Object.keys(rbac).length) {
       query.$and = [rbac];
     }
@@ -255,7 +237,7 @@ async function getReviews(req, res) {
 async function getSegmentCounts(req, res) {
   try {
     await commerceSync.autoUpdateSlaBreachedOrders();
-    const rbacQuery = buildRbacQuery(req.user);
+    const rbacQuery = await buildRbacQuery(req.user);
     
     const counts = await CommerceOrder.aggregate([
       { $match: rbacQuery },
@@ -647,16 +629,19 @@ async function updateOrderStatus(req, res) {
     updated.workflowPriority = commerceSync.computeWorkflowPriority(updated);
     await updated.save();
 
+    await commerceSync.generateTasksForOrder(updated);
+    await require('../../workspace/service').reconcileOrderStages();
+
     // Auto-complete active tasks matching updated stage
     if (confirmationStatus === 'confirmed') {
       await Task.updateMany(
-        { orderId: commerceOrderId, type: 'customer-confirmation', status: { $in: ['pending', 'in-progress', 'overdue'] } },
+        { 'sourceOrder.orderId': commerceOrderId, type: 'customer-confirmation', status: { $in: ['pending', 'in-progress', 'overdue'] } },
         { $set: { status: 'completed', outcome: 'Customer Confirmed', completedAt: new Date() } }
       );
     }
     if (vendorStatus === 'accepted') {
       await Task.updateMany(
-        { orderId: commerceOrderId, type: { $in: ['vendor-call', 'vendor-delay'] }, status: { $in: ['pending', 'in-progress', 'overdue'] } },
+        { 'sourceOrder.orderId': commerceOrderId, type: { $in: ['vendor-call', 'vendor-delay'] }, status: { $in: ['pending', 'in-progress', 'overdue'] } },
         { $set: { status: 'completed', outcome: 'Vendor Accepted', completedAt: new Date() } }
       );
     }
@@ -788,6 +773,7 @@ async function getReturns(req, res) {
   try {
     const { stage = 'customer_response', search, page = 1, limit = 20 } = req.query;
     const query = {};
+    if (!['admin','super-admin'].includes(req.user.role)) query.externalReturnId={$in:await Task.distinct('metadata.returnId',require('../../workspace/service').scope(req.user))};
     if (stage) query.workflowStage = stage;
     if (search) {
       const regex = new RegExp(search, 'i');

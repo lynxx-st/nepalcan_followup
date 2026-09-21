@@ -131,6 +131,7 @@ function CardFooter({ item, onOutcome, onSkip, path }: CardFooterProps) {
 }
 
 function TaskListCard({ item, onOutcome, onSkip }: { item: QueueItem; onOutcome: (i: QueueItem, queueKey: string) => void; onSkip: (i: QueueItem) => void }) {
+  const navigate = useNavigate();
   const task = item.task;
   const path = modulePathOf(item);
   const { name, phone, vendorName, vendorPhone, branch } = personOf(item.order, task);
@@ -232,6 +233,7 @@ function SwipeCard({ item, onOpen, onOutcome, onSkip, onReschedule }: { item: Qu
   };
 
   const rotate = offset.x * 0.06;
+  const navigate = useNavigate();
   const task = item.task;
   const path = modulePathOf(item);
   const { name, phone, vendorName, vendorPhone, branch } = personOf(item.order, task);
@@ -381,7 +383,7 @@ export default function NextCall() {
       const c = { all: tasks.length, preOrder: 0, processing: 0, afterDelivery: 0, return: 0 };
       for (const t of tasks) {
         const s = t.stage || taskStage(t.task?.type);
-        if (c[s] !== undefined) c[s]++;
+        if (s in c) c[s as keyof typeof c]++;
       }
       setCounts(c);
       if (taskParam && !usedTaskRef.current) {

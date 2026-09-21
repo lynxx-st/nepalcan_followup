@@ -104,7 +104,7 @@ export default function CancelledOrders() {
             {(['all', ...SEGMENTS.map(s => s.key)] as const).map((key) => (
               <button
                 key={key}
-                onClick={() => setFilter(key)}
+                onClick={() => setFilter(key as 'all' | 'system_cancelled' | 'unrecoverable')}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-2xl text-xs font-medium transition-all cursor-pointer min-h-[44px] ${
                   filter === key
                     ? 'bg-[#0a0a0a] text-white shadow-2xs font-semibold'

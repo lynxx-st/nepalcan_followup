@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "concurrently \"nodemon server.js\" \"npm run dev:frontend\"",
-    "test": "echo \"No tests yet\" && exit 0",
+    "test": "node --test test/*.test.js",
     "dev:frontend": "cd frontend && npm run dev",
     "build:frontend": "cd frontend && npm run build",
     "install:frontend": "cd frontend && npm install",
@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
+    "mongodb-memory-server": "^11.2.0",
     "nodemon": "^3.0.2"
   },
   "engines": {

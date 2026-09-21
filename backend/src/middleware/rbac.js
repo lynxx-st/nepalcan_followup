@@ -11,7 +11,7 @@ const requireRole = (allowedRoles) => {
   const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
   return (req, res, next) => {
     const userRole = req.userRole || 'user';
-    if (!roles.includes(userRole)) {
+    if (userRole !== 'super-admin' && !roles.includes(userRole)) {
       return res.status(403).json({
         success: false,
         error: { message: `Requires one of: ${roles.join(', ')}` },

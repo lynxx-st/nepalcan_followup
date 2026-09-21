@@ -32,21 +32,19 @@ export default function Stats() {
         analyticsApi.getAgentPerformance(days),
         analyticsApi.getOrderLifecycle(days),
       ]);
-      setData({
-        window: w,
+      setAnalyticsData({
+        window: days,
         overview: overview.data,
         slaBreach: slaBreach.data,
         callOutcomes: callOutcomes.data,
         agentPerformance: agentPerf.data,
         orderLifecycle: lifecycle.data,
-        operational: operational.data,
-        forecast: forecast.data,
       });
     } catch (err) {
       console.error('Failed to load analytics', err);
       setLoadError(true);
     } finally {
-      setLoading(false);
+      setAnalyticsLoading(false);
     }
   };
 

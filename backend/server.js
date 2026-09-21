@@ -44,6 +44,7 @@ if (config.nodeEnv !== 'test') {
   app.use(morgan('dev'));
 }
 
+app.use('/api/v1/workspace', require('./modules/workspace/routes').router);
 app.use('/api/v1/auth', authLimiter, authRoutes);
 app.use('/api/v1/attendance', apiLimiter, attendanceRoutes);
 app.use('/api/v1/tasks', apiLimiter, taskRoutes);
@@ -55,7 +56,7 @@ app.use('/api/v1/commerce', commerceRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/settings', apiLimiter, settingsRoutes);
 app.use('/api/v1/analytics', apiLimiter, analyticsRoutes);
-app.use('/api/v1/internal/task-generator', internalLimiter, taskGeneratorRoutes);
+app.use('/api/v1/internal/task-generator', require('./src/middleware/auth').authenticate, require('./src/middleware/auth').requireAdmin, internalLimiter, taskGeneratorRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

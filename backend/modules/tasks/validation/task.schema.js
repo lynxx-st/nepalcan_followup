@@ -39,6 +39,7 @@ const updateTaskSchema = Joi.object({
 });
 
 const completeTaskSchema = Joi.object({
+  outcome: Joi.string().optional(),
   completedBy: Joi.string().optional(),
   notes: Joi.string().allow('').optional(),
   durationMinutes: Joi.number().integer().min(0).optional(),

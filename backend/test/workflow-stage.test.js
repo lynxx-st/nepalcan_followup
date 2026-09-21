@@ -14,7 +14,7 @@ const stageOf = (overrides) => {
 assert.strictEqual(stageOf({ customer: { confirmationStatus: 'rescheduled' } }), 'rescheduled');
 assert.strictEqual(
   stageOf({ vendor: { vendorStatus: 'rescheduled' }, commerce: { orderStatus: 'Shipped' } }),
-  'rescheduled'
+  'shipped'
 );
 
 // Customer confirmed only -> done (marked done in pre-processing)

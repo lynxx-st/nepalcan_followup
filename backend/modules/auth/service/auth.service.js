@@ -6,12 +6,14 @@ const Admin = require('../../../database/models').Admin;
 
 class AuthService {
   async login(email, password) {
-    const admin = await Admin.findOne({ email: email.toLowerCase(), isActive: true });
+    const login = String(email).trim().toLowerCase();
+    const admin = await Admin.findOne({ $or: [{ email: login }, { username: login }] });
+    if (admin && (!admin.isActive || admin.deletedAt)) throw new Error('Account is inactive');
 
     if (admin) {
       const valid = await bcrypt.compare(password, admin.passwordHash);
       if (!valid) {
-        throw new Error('Invalid email or password');
+        throw new Error('Invalid username or password');
       }
       admin.lastLoginAt = new Date();
       await admin.save();
@@ -32,6 +34,7 @@ class AuthService {
       return { token, user: { id: admin._id, name: admin.name || null, email: admin.email, role: admin.role, type: 'admin', branches: admin.branches || [], team: admin.team || null } };
     }
 
+    if (process.env.ALLOW_PORTAL_LOGIN !== 'true') throw new Error('Invalid username or password');
     const body = JSON.stringify({ email, password });
     const url = new URL(config.authApiUrl);
 

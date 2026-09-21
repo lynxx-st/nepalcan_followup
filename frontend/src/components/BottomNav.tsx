@@ -8,14 +8,14 @@ import { toast } from 'sonner';
 import { useInstallPrompt } from '../hooks/useInstallPrompt';
 
 const PRIMARY_ITEMS = [
-  { to: '/today', label: 'Today', icon: CheckSquare },
-  { to: '/next', label: 'Next', icon: Zap },
+  { to: '/today', label: 'My tasks', icon: CheckSquare },
+  { to: '/reviews', label: 'Reviews', icon: CheckSquare },
   { to: '/orders', label: 'Orders', icon: ShoppingBag },
   { to: '/returns', label: 'Returns', icon: RotateCcw },
 ];
 
 const NAV_LINKS = [
-  { to: '/today', label: "Today's Work", icon: CheckSquare },
+  { to: '/today', label: "My tasks", icon: CheckSquare },
   { to: '/next', label: 'Next Call', icon: Zap },
   { to: '/orders', label: 'Orders', icon: ShoppingBag },
   { to: '/cancelled-orders', label: 'Cancelled', icon: XCircle },
@@ -70,6 +70,7 @@ export default function BottomNav() {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    sessionStorage.clear();
     window.location.href = '/login';
   };
 
@@ -133,7 +134,7 @@ export default function BottomNav() {
             </div>
 
             <div className="space-y-1.5">
-              {NAV_LINKS.map((link) => {
+              {[...NAV_LINKS.filter(l => !['/next','/cancelled-orders'].includes(l.to) && (!['/rules','/stats','/settings','/recovery'].includes(l.to) || ['super-admin','admin'].includes(currentUser?.role))), ...(['super-admin','admin','manager'].includes(currentUser?.role) ? [{to:'/team-work',label:'Workload',icon:CheckSquare},{to:'/users',label:'Team',icon:CheckSquare},{to:'/archive',label:'History',icon:CheckSquare}] : []), ...(['super-admin','admin'].includes(currentUser?.role)?[{to:'/automation',label:'Automation',icon:CheckSquare}]:[])].map((link) => {
                 const Icon = link.icon;
                 const active = location.pathname === link.to;
                 return (

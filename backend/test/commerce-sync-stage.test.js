@@ -14,7 +14,7 @@ assert.notStrictEqual(stage('Processing', 'pending', 'unassigned'), 'pending_con
 assert.notStrictEqual(stage('Processing', 'confirmed', 'accepted'), 'pending_confirmation');
 // Shipped orders must never land in pending_confirmation.
 assert.strictEqual(stage('Shipped', 'pending', 'unassigned'), 'shipped');
-assert.strictEqual(stage('Delivered', 'pending', 'unassigned'), 'delivered_followup');
+assert.strictEqual(stage('Delivered', 'pending', 'unassigned'), 'pending_review');
 // Only truly unconfirmed + pending orders belong in pending_confirmation.
 assert.strictEqual(stage('Pending', 'pending', 'unassigned'), 'pending_confirmation');
 // Customer follow-up accepted moves to 'done' (Marked Done inside pre processing).
@@ -31,3 +31,18 @@ assert.strictEqual(infer('pickup_collected', '', null), 'Processing');
 assert.strictEqual(infer('', '', 'Pending'), 'Pending');
 
 console.log('commerce-sync-stage OK');
+
+for (const paymentStatus of ['Pending', 'Paid']) {
+  for (const orderStatus of ['Processing', 'Shipped']) {
+    const o = { commerce: { orderStatus, paymentStatus }, customer: { confirmationStatus: 'pending' }, vendor: { vendorStatus: 'unassigned' } };
+    assert.equal(commerceSync.getPriorityForOrder(o).taskType, 'logistics-followup');
+  }
+}
+assert.equal(stage('Processing', 'rescheduled', 'unassigned'), 'collected_by_logistics');
+assert.equal(commerceSync.getPriorityForOrder({ commerce: { orderStatus: 'Return Delivered' } }), null);
+const cached = { customer: { phone: '9800000001' }, vendor: { phone: '9800000002' } };
+const normalized = commerceSync.normalizeOrder({ _id: 'example', orderStatus: 'Processing' }, cached);
+assert.equal(normalized.customer.phone, cached.customer.phone);
+assert.equal(normalized.vendor.phone, cached.vendor.phone);
+const detail = commerceSync.normalizeOrder({ customerProfile: { phone: Buffer.from('9800000003').toString('base64') } }, cached);
+assert.equal(detail.customer.phone, '9800000003');

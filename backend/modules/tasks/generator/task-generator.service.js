@@ -63,7 +63,7 @@ function buildCommerceReason(taskType, orderData) {
       lines.push('Order requires escalation.');
       break;
     case 'logistics-followup':
-      lines.push('Order processing but not picked up by logistics partner.');
+      lines.push(orderData.newStatus === 'Shipped' ? 'Order shipped. Follow up on delivery progress.' : orderData.newStatus === 'Processing' ? 'Order processing. Follow up on logistics progress.' : 'Confirmations complete. Follow up on pickup and dispatch.');
       break;
     default:
       lines.push(`Order ${orderData.newStatus || 'synced'} from commerce system.`);
@@ -93,10 +93,11 @@ class TaskGeneratorService {
           'sourceOrder.orderId': orderId,
           type: taskType,
           status: { $nin: ['cancelled', 'skipped'] },
+          ...(orderData.workflowStage ? { $or: [{ status: { $in: ['pending', 'in-progress', 'overdue'] } }, { 'metadata.workflowStage': orderData.workflowStage }] } : {}),
         });
         if (existing) continue;
 
-        const assignment = await resolveAssignee(rule);
+        const assignment = null; // Workspace dispatcher assigns whole vendor groups after generation.
         const taskData = {
           type: taskType,
           priority: priorityOverride || rule.priority,
@@ -109,7 +110,9 @@ class TaskGeneratorService {
           customerPhone: orderData.customerPhone || '',
           vendorPhone: orderData.vendorPhone || '',
           metadata: {
+            workflowStage: orderData.workflowStage,
             ruleId: rule._id,
+            team: rule.team || null,
             ruleName: rule.name,
             trigger: rule.trigger,
             evaluatedAt: new Date().toISOString(),
@@ -151,6 +154,7 @@ class TaskGeneratorService {
           customerPhone: orderData.customerPhone || '',
           vendorPhone: orderData.vendorPhone || '',
           metadata: {
+            workflowStage: orderData.workflowStage,
             trigger: 'commerce.order.synced',
             evaluatedAt: new Date().toISOString(),
             source: 'commerce-sync',
@@ -180,10 +184,11 @@ class TaskGeneratorService {
           'sourceOrder.orderId': orderId,
           type: rule.taskType,
           status: { $nin: ['cancelled', 'skipped'] },
+          ...(orderData.workflowStage ? { $or: [{ status: { $in: ['pending', 'in-progress', 'overdue'] } }, { 'metadata.workflowStage': orderData.workflowStage }] } : {}),
         });
         if (existing) continue;
 
-        const assignment = await resolveAssignee(rule);
+        const assignment = null; // Workspace dispatcher assigns whole vendor groups after generation.
         const taskData = {
           type: rule.taskType,
           priority: rule.priority,
@@ -196,7 +201,9 @@ class TaskGeneratorService {
           customerPhone: orderData.customerPhone || '',
           vendorPhone: orderData.vendorPhone || '',
           metadata: {
+            workflowStage: orderData.workflowStage,
             ruleId: rule._id,
+            team: rule.team || null,
             ruleName: rule.name,
             trigger: rule.trigger,
             evaluatedAt: new Date().toISOString(),

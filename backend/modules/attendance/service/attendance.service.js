@@ -54,6 +54,7 @@ async function checkIn(userId, notes = '') {
     notes,
   });
 
+  await require('../../workspace/service').rebalance().catch(e => { if (e.statusCode !== 409) console.error('Assignment refresh pending'); });
   return activeRecord;
 }
 
@@ -79,6 +80,7 @@ async function checkOut(userId, notes = '') {
   if (notes) activeRecord.notes = notes;
 
   await activeRecord.save();
+  await require('../../workspace/service').rebalance().catch(e => { if (e.statusCode !== 409) console.error('Assignment refresh pending'); });
   return activeRecord;
 }
 

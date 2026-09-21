@@ -125,3 +125,7 @@ cd frontend && npm run dev
 # Run frontend build check
 cd frontend && npm run build
 ```
+
+
+## App-only workspace implementation
+See APP-ROADMAP.md and WORKSPACE-SETUP.md. Assignment and call rules live in backend/modules/workspace. Task attempts are the authoritative atomic record; CallLog and order state are idempotent projections reconciled by the dispatcher. Use the shared assignment lease for ownership changes and call saves. Do not restore Sheets as runtime storage. Run npm test in backend and npm run lint/build in frontend. Integration tests use disposable MongoDB.

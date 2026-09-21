@@ -69,7 +69,7 @@ async function listTasks(req, res, next) {
 
     const result = await taskService.listTasks({
       ...value,
-      assigneeId: value.assigneeId,
+      assigneeId: ['super-admin','admin'].includes(req.userRole) ? value.assigneeId : req.userId,
     });
 
     res.json({ success: true, data: result });
@@ -135,7 +135,7 @@ async function getWorkload(req, res, next) {
 
 async function assignTask(req, res, next) {
   try {
-    const updated = await taskService.assignTask(req.params.id, req.validatedBody);
+    const updated = await require('../../workspace/service').assign(req.params.id, req.validatedBody.assigneeId, req.user);
     res.json({ success: true, data: updated });
   } catch (error) {
     next(error);
@@ -144,10 +144,10 @@ async function assignTask(req, res, next) {
 
 async function completeTask(req, res, next) {
   try {
-    const updated = await taskService.completeTask(req.params.id, {
+    const updated = await require('../../workspace/service').recordOutcome(req.params.id, {
       ...req.validatedBody,
-      completedBy: req.user?.userId,
-    });
+      requestId: require('crypto').randomUUID(), outcome: req.validatedBody.outcome || 'other',
+    }, req.user);
     res.json({ success: true, data: updated });
   } catch (error) {
     next(error);
@@ -184,6 +184,7 @@ async function skipTask(req, res, next) {
 
 async function updateTask(req, res, next) {
   try {
+    if (req.validatedBody.status || req.validatedBody.assigneeId) return res.status(400).json({success:false,error:{message:'Use the call outcome or transfer action to change task state or ownership'}});
     const updated = await taskService.updateTask(req.params.id, req.validatedBody);
     res.json({ success: true, data: updated });
   } catch (error) {
@@ -212,7 +213,7 @@ async function getNextTask(req, res, next) {
 async function getNextAdvanced(req, res, next) {
   try {
     const limit = Math.min(Number(req.query.limit) || 1, 200);
-    const result = await taskService.getNextAdvanced(req.query.assigneeId || req.user?.userId, limit);
+    const result = await taskService.getNextAdvanced((['super-admin','admin'].includes(req.userRole) ? req.query.assigneeId : null) || req.userId, limit);
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -234,7 +235,7 @@ async function getTasksByOrder(req, res, next) {
   try {
     const { orderId } = req.params;
     const { status } = req.query;
-    const tasks = await taskService.getTasksByOrder(orderId, status);
+    const tasks = await Task.find({ 'sourceOrder.orderId':orderId, ...require('../../workspace/service').scope(req.user), ...(status ? {status} : {}) }).lean();
     res.json({ success: true, data: tasks });
   } catch (error) {
     next(error);

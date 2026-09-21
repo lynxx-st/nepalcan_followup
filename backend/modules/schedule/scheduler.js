@@ -52,6 +52,7 @@ class SLAScheduler {
       logger.info(`Marked ${result.modifiedCount} tasks as overdue`);
     }
 
+    await require('../workspace/service').rebalance().catch(error => { if (error.statusCode !== 409) throw error; });
     await commerceSync.autoUpdateSlaBreachedOrders();
     await commerceSync.updateSlaStatuses();
   }

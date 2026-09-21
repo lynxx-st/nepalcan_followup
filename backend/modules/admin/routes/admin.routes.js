@@ -12,7 +12,7 @@ router.post('/users/:id/reset-password', authenticate, requireSuperAdmin, adminC
 const seedTaskRules = require('../../rules/seed/seed-rules.service');
 const { Task, CommerceOrder } = require('../../../database/models');
 
-router.post('/reset', async (req, res, next) => {
+router.post('/reset', authenticate, requireSuperAdmin, async (req, res, next) => {
   try {
     const [taskResult, orderResult] = await Promise.all([
       Task.deleteMany({}),
@@ -30,7 +30,7 @@ router.post('/reset', async (req, res, next) => {
   }
 });
 
-router.post('/seed-rules', async (req, res, next) => {
+router.post('/seed-rules', authenticate, requireSuperAdmin, async (req, res, next) => {
   try {
     const count = await seedTaskRules();
     res.json({ success: true, data: { seeded: count } });

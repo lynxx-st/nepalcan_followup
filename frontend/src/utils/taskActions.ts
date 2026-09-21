@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { taskApi, callLogApi } from '../services/api';
+import api, { taskApi } from '../services/api';
 import { entityName } from './order';
 
 function taskId(task: any): string {
@@ -38,16 +38,7 @@ export async function completeTaskWithOutcome(
   const id = taskId(task);
   const code = outcome || 'other';
   try {
-    await taskApi.complete(id, { notes: label, outcome: code, durationMinutes: 0 });
-    try {
-      await callLogApi.create({
-        taskId: id,
-        orderId: orderIdOf(item) || undefined,
-        outcome: code,
-        durationMinutes: 0,
-        notes: label,
-      });
-    } catch {}
+    await api.post(`/v1/workspace/tasks/${id}/outcome`, { outcome: code, notes: label, durationMinutes: 0, requestId: crypto.randomUUID() });
     toast.success(`${label} — logged`);
     return true;
   } catch (err: any) {

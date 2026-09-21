@@ -40,6 +40,18 @@ async function fetchDeliveryZoneGroups(seedValue) {
 }
 
 const TaskSchema = new mongoose.Schema({
+  automationKey: { type: String, unique: true, sparse: true },
+  vendorKey: { type: String, index: true },
+  assignedAt: Date,
+  startedAt: Date,
+  activeUntil: Date,
+  callSessionId: String,
+  nextAttemptAt: Date,
+  manualAssignment: Boolean,
+  attempts: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  assignmentHistory: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  closedAt: Date,
+  closedReason: String,
   taskNumber: {
     type: String,
     unique: true,
@@ -60,13 +72,15 @@ const TaskSchema = new mongoose.Schema({
       'review-call',
       'escalation',
       'logistics-followup',
+      'order-check',
+      'return-followup',
     ],
     required: true,
     index: true,
   },
   assigneeId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'Admin',
     index: true,
   },
   assigneeName: {
@@ -116,7 +130,7 @@ const TaskSchema = new mongoose.Schema({
   },
   completedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'Admin',
   },
   metadata: {
     type: mongoose.Schema.Types.Mixed,
@@ -255,6 +269,7 @@ const TaskTimelineSchema = new mongoose.Schema({
 TaskTimelineSchema.index({ taskId: 1, createdAt: -1 });
 
 const CallLogSchema = new mongoose.Schema({
+  requestId: { type: String, unique: true, sparse: true },
   taskId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Task',
@@ -266,7 +281,7 @@ const CallLogSchema = new mongoose.Schema({
   },
   assignedTo: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'Admin',
   },
   outcome: {
     type: String,
@@ -282,6 +297,12 @@ const CallLogSchema = new mongoose.Schema({
       'recovered',
       'lost',
       'other',
+      'review-collected',
+      'return-customer-confirmed',
+      'return-customer-rejected',
+      'return-vendor-accepted',
+      'return-vendor-rejected',
+      'resolved',
     ],
   },
   durationMinutes: {
@@ -375,6 +396,7 @@ RecoveryCampaignSchema.index({ outcome: 1 });
 RecoveryCampaignSchema.index({ cancellationReason: 1 });
 
 const CommerceOrderSchema = new mongoose.Schema({
+  contactCheckedAt: Date,
   // ── Identity (Primary Keys) ──
   commerceOrderId: {
     type: String,
@@ -389,7 +411,7 @@ const CommerceOrderSchema = new mongoose.Schema({
   // ── Workflow (Computed, Indexed) ──
   workflowStage: {
     type: String,
-    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'collected_by_logistics', 'done', 'rescheduled', 'shipped', 'customer_response', 'vendor_response', 'cancelled', 'hold', 'reviewed', 'other'],
+    enum: ['pending_confirmation', 'pending_review', 'confirmed_unprocessed', 'collected_by_logistics', 'done', 'rescheduled', 'shipped', 'customer_response', 'vendor_response', 'cancelled', 'hold', 'reviewed', 'returned', 'other'],
     default: 'other',
   },
   workflowPriority: {
@@ -577,11 +599,22 @@ const AdminSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: true,
+    sparse: true,
     unique: true,
     lowercase: true,
     trim: true,
   },
+  legacyMemberId: { type: String, unique: true, sparse: true },
+  username: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
+  profile: { type: String, enum: ['intern', 'casual', 'executive'], default: 'casual' },
+  acceptsTasks: { type: Boolean, default: true },
+  newlyJoined: { type: Boolean, default: false },
+  joinedOn: String,
+  leave: [{ from: String, until: String }],
+  unavailableOn: String,
+  levelMode: { type: String, enum: ['auto', 'manual'], default: 'auto' },
+  manualLevel: { type: Number, min: 1, max: 10, default: 1 },
+  deletedAt: Date,
   passwordHash: {
     type: String,
     required: true,

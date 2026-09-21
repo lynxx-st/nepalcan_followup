@@ -2,6 +2,7 @@ const callLogService = require('../service/call-logs.service');
 
 async function createCallLog(req, res, next) {
   try {
+    await require('../../workspace/service').owned(req.validatedBody.taskId,req.user);
     const log = await callLogService.create({
       ...req.validatedBody,
       assignedTo: req.user?.userId,
@@ -23,6 +24,7 @@ async function getMyCallLogs(req, res, next) {
 
 async function getTaskCallLogs(req, res, next) {
   try {
+    await require('../../workspace/service').owned(req.params.taskId,req.user);
     const logs = await callLogService.listByTask(req.params.taskId);
     res.json({ success: true, data: logs });
   } catch (error) {

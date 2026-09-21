@@ -144,6 +144,7 @@ class CommerceSyncService {
   async loadSettings() {
     try {
       const settings = await settingsService.getAll();
+      this.confirmationOrder = settings.confirmationOrder === 'vendor_first' ? 'vendor_first' : 'customer_first';
       if (settings.logisticsFollowupHours) this.logisticsFollowupHours = settings.logisticsFollowupHours;
       if (settings.priorityAmountThreshold) this.priorityAmountThreshold = settings.priorityAmountThreshold;
       if (settings.logisticsFollowupSlaMinutes) this.slaDefaults['logistics-followup'] = settings.logisticsFollowupSlaMinutes;
@@ -345,6 +346,7 @@ class CommerceSyncService {
   }
 
   async processOrders(orders) {
+    await this.loadSettings();
     const results = [];
     const changedOrders = [];
 
@@ -407,10 +409,8 @@ class CommerceSyncService {
         changedOrders.push({ orderId: order.orderId, changes: changes.fields });
 
         if (changes.statusChanged) {
-          await Task.updateMany(
-            { 'sourceOrder.orderId': order._id, status: { $in: ['pending', 'in-progress'] } },
-            { status: 'cancelled', completedAt: new Date() }
-          );
+          // Workspace reconciliation retires only obsolete order steps and preserves active returns.
+          await require('../../workspace/service').reconcileOrderStages([order._id]);
           await this.generateTasksForOrder(updated);
 
           const prevStatus = existing.commerce?.orderStatus || existing.orderStatus;
@@ -497,8 +497,8 @@ class CommerceSyncService {
     const existingCustomer = existing?.customer && typeof existing.customer === 'object' ? existing.customer : {};
     const existingVendor = existing?.vendor && typeof existing.vendor === 'object' ? existing.vendor : {};
 
-    const customerPhone = decodeBase64(order.customerPhone || order.phone || order.mobile || '');
-    const vendorPhone = decodeBase64(order.vendorPhone || order.vendor?.phone || '');
+    const customerPhone = decodeBase64(order.customerProfile?.phone || order.customer?.phone || order.customerPhone || order.phone || order.mobile || existingCustomer.phone || '');
+    const vendorPhone = decodeBase64(order.vendorPhone || order.vendor?.phone || existingVendor.phone || '');
     const customerName = decodeBase64(order.customerProfile?.name || order.customer || '');
     const vendorName = decodeBase64(order.vendor?.name || order.vendor || '');
     const customerEmail = decodeBase64(order.customerProfile?.email || '');
@@ -587,6 +587,7 @@ class CommerceSyncService {
       vendorPhone: phoneOf(order.vendor) || order.vendorPhone || '',
       customerId: order._id,
       newStatus: c.orderStatus || order.orderStatus,
+      workflowStage: this.computeWorkflowStage(order),
       paymentStatus: c.paymentStatus || order.paymentStatus,
       paymentMethod: c.paymentMethod || order.paymentMethod,
       unAttendedCount: c.unAttendedCount ?? order.unAttendedCount,
@@ -617,7 +618,8 @@ class CommerceSyncService {
     const paymentMethod = c.paymentMethod || order.paymentMethod;
     const unAttendedCount = c.unAttendedCount ?? order.unAttendedCount;
     const totalAmount = c.totalAmount ?? order.totalAmount;
-    if (orderStatus === 'Shipped') return null;
+    const stage = this.computeWorkflowStage(order);
+    if (['cancelled', 'reviewed', 'returned', 'other'].includes(stage)) return null;
     let priority = 'medium';
     let taskType = 'customer-confirmation';
     let slaMinutes = this.slaDefaults['customer-confirmation'];
@@ -670,6 +672,8 @@ class CommerceSyncService {
         taskType = 'customer-confirmation';
     }
 
+    // The same lifecycle drives Orders and task generation; payment never regresses fulfillment.
+    taskType = this.getTaskTypeForStage(stage, order);
     slaMinutes = this.slaDefaults[taskType] || 60;
 
     if (unAttendedCount > 0) {
@@ -725,10 +729,11 @@ class CommerceSyncService {
     const vs = order.vendor?.vendorStatus || order.vendorStatus || 'unassigned';
     const os = (order.commerce?.orderStatus || order.orderStatus || '').toLowerCase();
 
-    if (['rescheduled', 'no_answer', 'call_later'].includes(cs) || ['rescheduled', 'no_answer', 'call_later'].includes(vs)) return 'rescheduled';
     if (os === 'cancelled') return 'cancelled';
     if (os === 'hold') return 'hold';
     if (os === 'shipped') return 'shipped';
+    if (os === 'processing') return 'collected_by_logistics';
+    if (os === 'return delivered') return 'returned';
 
     // Delivered orders
     if (['delivered', 'return delivered'].includes(os)) {
@@ -738,6 +743,8 @@ class CommerceSyncService {
       }
       return 'pending_review';
     }
+
+    if (['rescheduled', 'no_answer', 'call_later'].includes(cs) || ['rescheduled', 'no_answer', 'call_later'].includes(vs)) return 'rescheduled';
 
     // Processing (picked up by logistics) → collected_by_logistics
     if (os === 'processing' && cs === 'confirmed' && vs === 'accepted') {
@@ -759,6 +766,7 @@ class CommerceSyncService {
       return 'pending_confirmation';
     }
 
+    if (os === 'pending' && this.confirmationOrder === 'vendor_first' && vs !== 'accepted') return 'done';
     if (cs === 'pending' && os === 'pending') return 'pending_confirmation';
     return 'other';
   }
@@ -776,10 +784,16 @@ class CommerceSyncService {
     return p ? p.priority : 'low';
   }
 
-  getTaskTypeForStage(stage) {
+  getTaskTypeForStage(stage, order = {}) {
+    if (stage === 'rescheduled') {
+      const cs = order.customer?.confirmationStatus;
+      const vs = order.vendor?.vendorStatus;
+      return cs === 'confirmed' || (this.confirmationOrder === 'vendor_first' && vs !== 'accepted') ? 'vendor-call' : 'customer-confirmation';
+    }
     const map = {
       pending_confirmation: 'customer-confirmation',
-      confirmed_unprocessed: 'vendor-call',
+      done: 'vendor-call',
+      confirmed_unprocessed: 'logistics-followup',
       collected_by_logistics: 'logistics-followup',
       shipped: 'logistics-followup',
       pending_review: 'review-call',
@@ -787,9 +801,9 @@ class CommerceSyncService {
       vendor_response: 'return-vendor-response',
       rescheduled: 'customer-confirmation',
       cancelled: 'cancelled-recovery',
-      hold: 'customer-confirmation',
+      hold: 'escalation',
     };
-    return map[stage] || 'customer-confirmation';
+    return map[stage] || 'order-check';
   }
 
   async getOrderStatus(commerceOrderId) {

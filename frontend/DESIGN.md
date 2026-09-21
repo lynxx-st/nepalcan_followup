@@ -380,3 +380,7 @@ shadcn/ui is built on three principles visible in every token: (1) achromatic by
   --shadow-subtle-2: lab(2.75381 0 0) 0px 0px 0px 0px;
 }
 ```
+
+
+## App-only workspace (September 2026)
+My Tasks is the employee home. Desktop uses a queue and detail pane; mobile shows one pane at a time with fixed call/outcome actions above bottom navigation. Vendor coordination is grouped into a conversation with per-order results. Use clear labels, 44px targets, persistent errors, keyboard focus and retained drafts. Team cards expose availability, training capacity and measured work; roles and employment profiles are separate fields. Do not use simulated clocks in production navigation. Closed reviews live in History.

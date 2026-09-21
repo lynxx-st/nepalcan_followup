@@ -14,6 +14,11 @@ const authenticate = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, config.jwtSecret);
 
+    if (decoded.type === 'admin') {
+      const account = await require('../../database/models').Admin.findById(decoded.sub || decoded.userId).select('role isActive deletedAt team branches name').lean();
+      if (!account || !account.isActive || account.deletedAt) return res.status(401).json({ success: false, error: { message: 'Account is inactive' } });
+      decoded.role = account.role; decoded.team = account.team; decoded.branches = account.branches; decoded.name = account.name;
+    }
     req.user = decoded;
     req.user.userId = decoded.sub || decoded.userId;
     req.userId = req.user.userId;

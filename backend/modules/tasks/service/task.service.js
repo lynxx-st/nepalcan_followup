@@ -137,8 +137,8 @@ class TaskService {
 
   async skipTask(id, data) {
     const updated = await Task.findByIdAndUpdate(id, {
-      status: 'skipped',
       $set: {
+        status: 'pending', nextAttemptAt: new Date(Date.now()+15*60000), activeUntil: null,
         'metadata.skippedBy': data?.skippedBy || 'staff',
         'metadata.skippedAt': new Date().toISOString(),
       },
@@ -154,7 +154,7 @@ class TaskService {
   async deleteTask(id) {
     const task = await Task.findById(id);
     if (!task) throw new NotFoundError('Task not found');
-    return Task.findByIdAndDelete(id);
+    return Task.findByIdAndUpdate(id, {$set:{status:'skipped',closedAt:new Date(),closedReason:'Closed by manager'}}, {new:true});
   }
 
   async scheduleTask(id, scheduledDate, userId) {
@@ -162,44 +162,14 @@ class TaskService {
     if (!task) throw new NotFoundError('Task not found');
 
     const dueAt = new Date(scheduledDate);
-    dueAt.setHours(9, 0, 0, 0);
-
-    await this.addTimeline(id, 'staff', `Task rescheduled to ${dueAt.toLocaleDateString()} by ${userId || 'staff'}`);
-
-    await Task.findByIdAndUpdate(id, {
-      status: 'completed',
-      completedAt: new Date(),
-      completedBy: userId || null,
-    });
-
-    const newTask = await Task.create({
-      type: task.type,
-      priority: task.priority,
-      reason: `${task.reason} (Rescheduled from ${new Date(task.createdAt).toLocaleDateString()})`,
-      sourceOrder: task.sourceOrder,
-      orderId: task.orderId,
-      orderNumber: task.orderNumber,
-      slaMinutes: task.slaMinutes,
-      dueAt,
-      scheduledAt: dueAt,
-      customerPhone: task.customerPhone,
-      vendorPhone: task.vendorPhone,
-      assigneeId: task.assigneeId,
-      assigneeName: task.assigneeName,
-      metadata: {
-        ...task.metadata,
-        rescheduledFrom: task._id,
-        rescheduledAt: new Date().toISOString(),
-      },
-    });
-
-    await this.addTimeline(newTask._id, 'system', `Task rescheduled from ${new Date(task.createdAt).toLocaleDateString()}, due ${dueAt.toLocaleDateString()}`);
-    return newTask;
+    if (!Number.isFinite(+dueAt) || dueAt <= new Date()) throw new Error('Choose a future follow-up time');
+    await this.addTimeline(id, 'staff', 'Follow-up rescheduled', { dueAt, actorId: userId });
+    return Task.findByIdAndUpdate(id, { $set: { status: 'pending', nextAttemptAt: dueAt, scheduledAt: dueAt, activeUntil: null } }, { new: true });
   }
 
   async getNextTask(assigneeId) {
     const assigneeMatch = assigneeId
-      ? [{ assigneeId }, { assigneeId: null }, { assigneeId: { $exists: false } }]
+      ? [{ assigneeId }]
       : [{ assigneeId: null }, { assigneeId: { $exists: false } }];
     const closed = await this.getClosedOrderIds();
     const orderMatch = closed.length
@@ -222,7 +192,7 @@ class TaskService {
 
   async getNextAdvanced(assigneeId, limit = 1) {
     const assigneeMatch = assigneeId
-      ? [{ assigneeId }, { assigneeId: null }, { assigneeId: { $exists: false } }]
+      ? [{ assigneeId }]
       : [{ assigneeId: null }, { assigneeId: { $exists: false } }];
     const closed = await this.getClosedOrderIds();
     const orderMatch = closed.length

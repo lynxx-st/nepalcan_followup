@@ -16,7 +16,7 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
-      setError('Email and password are required');
+      setError('Username and password are required');
       return;
     }
     setLoading(true);
@@ -49,12 +49,12 @@ export default function Login() {
         </div>
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-[#0a0a0a] mb-1">Email</label>
+            <label className="block text-xs font-semibold text-[#0a0a0a] mb-1">Username or email</label>
             <input
-              type="email"
+              type="text" autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@email.com"
+              placeholder="Your username or email"
               className="input-blueprint w-full"
               required
             />

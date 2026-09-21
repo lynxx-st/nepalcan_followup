@@ -37,14 +37,14 @@ const STAGE_BUNDLES = [
   {
     key: 'return',
     label: 'Return & Recovery',
-    description: 'Return responses, rescheduled calls, cancelled & hold orders',
-    segments: ['customer_response', 'vendor_response', 'cancelled', 'hold'],
+    description: 'Return responses and orders on hold',
+    segments: ['customer_response', 'vendor_response', 'hold'],
   },
 ] as const;
 
 const SEGMENTS = [
   { key: 'pending_confirmation', label: 'Pending Order Confirmation', shortLabel: 'Pending Confirm', icon: PhoneCall, stage: 'pre_order' },
-  { key: 'done', label: 'Marked Done', shortLabel: 'Done', icon: CheckCircle2, stage: 'pre_order' },
+  { key: 'done', label: 'Vendor Follow-up', shortLabel: 'Vendor Follow-up', icon: CheckCircle2, stage: 'pre_order' },
   { key: 'confirmed_unprocessed', label: 'Confirmed But Unprocessed', shortLabel: 'Unprocessed', icon: PackageCheck, stage: 'processing' },
   { key: 'collected_by_logistics', label: 'Collected by Logistics', shortLabel: 'Logistics', icon: Truck, stage: 'processing' },
   { key: 'shipped', label: 'Shipped Orders', shortLabel: 'Shipped', icon: Truck, stage: 'processing' },
@@ -52,7 +52,6 @@ const SEGMENTS = [
   { key: 'customer_response', label: 'Return: Customer Response', shortLabel: 'Cust Return', icon: PhoneCall, stage: 'return' },
   { key: 'vendor_response', label: 'Return: Vendor Response', shortLabel: 'Vendor Return', icon: Store, stage: 'return' },
   { key: 'rescheduled', label: 'Rescheduled Orders', shortLabel: 'Rescheduled', icon: CalendarClock, stage: 'pre_order' },
-  { key: 'cancelled', label: 'Cancelled Orders', shortLabel: 'Cancelled', icon: XCircle, stage: 'return' },
   { key: 'hold', label: 'Hold Orders', shortLabel: 'Hold', icon: Clock, stage: 'return' },
 ] as const;
 

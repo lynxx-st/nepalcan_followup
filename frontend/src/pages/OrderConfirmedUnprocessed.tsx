@@ -85,7 +85,7 @@ export default function OrderConfirmedUnprocessed() {
 
    const handleVendorOutcome = async (value: string) => {
     if (value === 'accepted') {
-      await handleVendorAccepted();
+      await updateStatus({vendorStatus:'accepted',note:'Vendor confirmed stock availability'});
     } else if (value === 'delayed') {
       setShowVendorDatePicker(true);
     } else {

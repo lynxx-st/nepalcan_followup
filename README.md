@@ -1,3 +1,5 @@
+> **App-only workspace update:** Implementation checklist: [APP-ROADMAP.md](APP-ROADMAP.md). Deployment, account migration and cron configuration: [WORKSPACE-SETUP.md](WORKSPACE-SETUP.md). Google Sheets is no longer a runtime dependency. My Tasks replaces the older Next Call UI described below.
+
 # NepalCan Ops — Follow-up Task Engine & Order Operations
 
 NepalCan Ops is a mobile-first SaaS follow-up task engine and order operations management platform built for NepalCan Commerce. It automates customer call workflows, vendor follow-ups, logistics tracking, review collection, return management, and cancelled order recovery campaigns.
