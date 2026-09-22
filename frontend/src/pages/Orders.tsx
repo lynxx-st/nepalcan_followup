@@ -70,7 +70,7 @@ const getTotalAmount = (order: any): number => {
 
 export default function Orders() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { simulatedTimeIso } = useSimulatedTime();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,13 +89,24 @@ export default function Orders() {
 
   useEffect(() => {
     setSearchQuery(searchParams.get('search') || '');
+    const segment = SEGMENTS.find(s => s.key === searchParams.get('segment'));
+    if (segment) { setActiveSegment(segment.key); setActiveStage(segment.stage); setPage(1); }
   }, [searchParams]);
+
+  const selectSegment = (segment: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('segment', segment);
+    if (searchQuery) next.set('search', searchQuery);
+    setSearchParams(next);
+    setActiveSegment(segment);
+    setPage(1);
+  };
 
   const handleStageChange = (stageKey: string) => {
     setActiveStage(stageKey);
     const bundle = STAGE_BUNDLES.find(b => b.key === stageKey);
     if (bundle && bundle.segments.length > 0) {
-      setActiveSegment(bundle.segments[0]);
+      selectSegment(bundle.segments[0]);
       setPage(1);
     }
   };
@@ -525,7 +536,7 @@ export default function Orders() {
               return (
                 <button
                   key={seg.key}
-                  onClick={() => { setActiveSegment(seg.key); setPage(1); }}
+                  onClick={() => { selectSegment(seg.key); }}
                   className={`shrink-0 snap-start flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl text-[11px] font-medium transition-all cursor-pointer ${
                     isActive
                       ? 'bg-[#0a0a0a] text-white shadow-2xs font-semibold'
@@ -552,7 +563,7 @@ export default function Orders() {
               return (
                 <button
                   key={seg.key}
-                  onClick={() => { setActiveSegment(seg.key); setPage(1); }}
+                  onClick={() => { selectSegment(seg.key); }}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-2xl text-xs font-medium transition-all cursor-pointer min-h-[44px] ${
                     isActive
                       ? 'bg-[#0a0a0a] text-white shadow-2xs font-semibold'

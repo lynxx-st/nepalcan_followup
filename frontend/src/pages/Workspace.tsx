@@ -81,6 +81,24 @@ const outcomes = [
   ["other", "Needs another follow-up"],
 ];
 
+function orderPath(t: Row) {
+  const id = t.order?.commerceOrderId || t.sourceOrder?.orderId || t.orderId;
+  const paths: Record<string, string> = {
+    confirmed_unprocessed: "confirmed-unprocessed",
+    collected_by_logistics: "collected-by-logistics",
+    shipped: "shipped",
+    pending_review: "pending-review",
+    customer_response: "customer-response",
+    vendor_response: "vendor-response",
+    hold: "hold",
+    cancelled: "cancelled",
+  };
+  const stage = t.metadata?.returnId
+    ? undefined
+    : paths[t.order?.workflowStage];
+  return `/orders/${encodeURIComponent(id || "")}${stage ? `/${stage}` : ""}`;
+}
+
 function contact(t: Row, party?: string) {
   const o = t.order || {},
     vendor = party
@@ -95,7 +113,7 @@ function contact(t: Row, party?: string) {
       typeof person === "string"
         ? person
         : person?.name ||
-          o.customerProfile?.name ||
+          (!vendor ? o.customerProfile?.name : undefined) ||
           (vendor ? "Vendor" : "Customer"),
     phone: vendor
       ? o.vendor?.phone || t.vendorPhone
@@ -619,39 +637,79 @@ function TaskPanel({
         <span className="work-badge">{closed ? "Closed" : t.priority}</span>
       </div>
       <div className="detail-body">
-        <p className="eyebrow">
-          {person.vendor ? "Vendor contact" : "Customer contact"}
-        </p>
-        <h2>{person.name}</h2>
-        <p className="contact-number">
-          {person.phone ||
-            (contactLoading
-              ? "Fetching phone number from portal..."
-              : "Phone number not available")}
-        </p>
-        {!person.phone && (
+        <div className="work-context">
+          <Link to={orderPath(t)}>
+            {t.order?.orderId || t.sourceOrder?.orderNumber || "Open order"}{" "}
+            <ArrowUpRight size={14} />
+          </Link>
+          <span className="work-badge">
+            {t.order?.orderStatus || "Awaiting sync"}
+          </span>
+          <Link
+            to={
+              t.metadata?.returnId
+                ? `/returns?task=${t._id}`
+                : `/orders?segment=${encodeURIComponent(t.order?.workflowStage || "pending_confirmation")}`
+            }
+          >
+            View order stage
+          </Link>
+        </div>
+        <div className="contact-cards" aria-label="Order contacts">
+          {(["customer", "vendor"] as const).map((party) => {
+            const details = contact(t, party);
+            const selected = person.vendor === (party === "vendor");
+            const canChoose = ["logistics-followup", "escalation"].includes(
+              t.type,
+            );
+            return (
+              <section
+                key={party}
+                className={`contact-card ${selected ? "selected" : ""}`}
+              >
+                <div className="contact-card-label">
+                  <span>{party === "customer" ? "Customer" : "Vendor"}</span>
+                  {selected && (
+                    <span className="work-badge">Current contact</span>
+                  )}
+                </div>
+                <strong>{details.name}</strong>
+                <span className="contact-phone">
+                  {details.phone ||
+                    (contactLoading
+                      ? "Fetching number..."
+                      : "Number unavailable")}
+                </span>
+                {canChoose && (
+                  <button
+                    type="button"
+                    className="quiet-button"
+                    aria-pressed={selected}
+                    onClick={() => setContactParty(party)}
+                  >
+                    {selected ? "Selected for call" : `Call ${party}`}
+                  </button>
+                )}
+              </section>
+            );
+          })}
+        </div>
+        {(!contact(t, "customer").phone || !contact(t, "vendor").phone) && (
           <button
-            className="outline-button"
+            className="contact-refresh"
             disabled={contactLoading}
             onClick={loadContact}
           >
-            {contactLoading ? "Loading contact..." : "Retry portal contact"}
+            <RefreshCw size={13} />
+            {contactLoading
+              ? "Fetching contacts..."
+              : "Refresh portal contacts"}
           </button>
         )}
-        <p>{t.reason}</p>
-        {["logistics-followup", "escalation"].includes(t.type) && (
-          <label className="field-label">
-            Contact for this follow-up
-            <select
-              value={person.vendor ? "vendor" : "customer"}
-              onChange={(e) => setContactParty(e.target.value)}
-            >
-              <option value="customer">Customer</option>
-              <option value="vendor">Vendor</option>
-            </select>
-          </label>
-        )}
-
+        <div className="work-meta">
+          <span>{t.assigneeName || "Unassigned"}</span>
+          <span>Follow-up {time(t.nextAttemptAt || t.dueAt)}</span>
+        </div>
         {siblings.length > 1 && (
           <div className="batch-list">
             <h3>One vendor · {siblings.length} open orders</h3>
@@ -673,116 +731,14 @@ function TaskPanel({
             ))}
           </div>
         )}
-
-        <dl className="order-facts">
-          <div>
-            <dt>Order</dt>
-            <dd>
-              <Link
-                to={`/orders/${t.order?.commerceOrderId || t.sourceOrder?.orderId || t.orderId}`}
-              >
-                {t.order?.orderId ||
-                  t.orderNumber ||
-                  t.sourceOrder?.orderNumber ||
-                  "Open order"}{" "}
-                <ArrowUpRight size={13} />
-              </Link>
-            </dd>
-          </div>
-          <div>
-            <dt>Portal status</dt>
-            <dd>{t.order?.orderStatus || "Awaiting sync"}</dd>
-          </div>
-          <div>
-            <dt>Orders section</dt>
-            <dd>
-              {t.metadata?.returnId || t.order?.workflowStage === "hold"
-                ? "Return & Recovery"
-                : [
-                      "collected_by_logistics",
-                      "confirmed_unprocessed",
-                      "shipped",
-                    ].includes(t.order?.workflowStage)
-                  ? "Processing"
-                  : ["pending_review", "reviewed"].includes(
-                        t.order?.workflowStage,
-                      )
-                    ? "After Delivery"
-                    : "Pre Processing"}
-            </dd>
-          </div>
-          <div>
-            <dt>Current step</dt>
-            <dd>
-              {(
-                {
-                  pending_confirmation: "Customer confirmation",
-                  done: "Vendor follow-up",
-                  confirmed_unprocessed: "Awaiting pickup / dispatch",
-                  collected_by_logistics: "Logistics follow-up",
-                  shipped: "Delivery follow-up",
-                  pending_review: "Customer review",
-                  customer_response: "Return: customer response",
-                  vendor_response: "Return: vendor response",
-                  hold: "Resolve order hold",
-                  rescheduled: "Scheduled callback",
-                } as Record<string, string>
-              )[t.order?.workflowStage] || "Check order details"}
-            </dd>
-          </div>
-          <div>
-            <dt>Assigned to</dt>
-            <dd>{t.assigneeName || "Unassigned"}</dd>
-          </div>
-          <div>
-            <dt>Follow-up</dt>
-            <dd>{time(t.nextAttemptAt || t.dueAt)}</dd>
-          </div>
-        </dl>
-
-        {t.assignmentHistory?.length > 0 && (
-          <p className="assignment-reason">
-            {t.assignmentHistory.at(-1).reason}
-          </p>
-        )}
-
         <ErrorMessage message={error} />
         {message && (
           <p className="work-notice" role="status">
             {message}
           </p>
         )}
-
-        {canAssign && !closed && (
-          <div className="form-section">
-            <label>
-              Transfer {person.vendor ? "vendor group" : "task"}
-              <select
-                value={transfer}
-                onChange={(e) => setTransfer(e.target.value)}
-              >
-                <option value="">Choose an employee</option>
-                {employees
-                  .filter((e) => e.isActive && !e.deletedAt)
-                  .map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.name} · {e.open} open
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <button
-              className="quiet-button"
-              disabled={busy || !transfer}
-              onClick={reassign}
-            >
-              Transfer assignment
-            </button>
-          </div>
-        )}
-
         {!closed && (
-          <form onSubmit={save} className="outcome-form">
+          <form id="task-outcome" onSubmit={save} className="outcome-form">
             <h3>Record the outcome</h3>
             <div className="outcome-options">
               {outcomeOptions.map(([value, label]) => (
@@ -872,40 +828,112 @@ function TaskPanel({
                 />
               </label>
             )}
-            <div className="task-actions">
-              {person.phone && (
-                <>
-                  {!t.activeUntil || new Date(t.activeUntil) < new Date() ? (
-                    <button
-                      type="button"
-                      className="quiet-button"
-                      disabled={busy}
-                      onClick={prepare}
-                    >
-                      <Phone size={17} /> Start call
-                    </button>
-                  ) : (
-                    <a
-                      className="quiet-button"
-                      href={`tel:${String(person.phone).replace(/[^+\d]/g, "")}`}
-                    >
-                      <Phone size={17} /> Open dialer
-                    </a>
-                  )}
-                </>
-              )}
-              <button
-                className="solid-button"
-                disabled={busy || !draft.outcome}
-              >
-                {busy ? "Saving…" : "Save outcome"}
-              </button>
-            </div>
           </form>
         )}
-
-        <section className="call-history">
-          <h3>Conversation history</h3>
+        <details className="work-disclosure">
+          <summary>Order details & assignment history</summary>
+          <p className="task-reason">{t.reason}</p>{" "}
+          <dl className="order-facts">
+            <div>
+              <dt>Order</dt>
+              <dd>
+                <Link to={orderPath(t)}>
+                  {t.order?.orderId ||
+                    t.orderNumber ||
+                    t.sourceOrder?.orderNumber ||
+                    "Open order"}{" "}
+                  <ArrowUpRight size={13} />
+                </Link>
+              </dd>
+            </div>
+            <div>
+              <dt>Portal status</dt>
+              <dd>{t.order?.orderStatus || "Awaiting sync"}</dd>
+            </div>
+            <div>
+              <dt>Orders section</dt>
+              <dd>
+                {t.metadata?.returnId || t.order?.workflowStage === "hold"
+                  ? "Return & Recovery"
+                  : [
+                        "collected_by_logistics",
+                        "confirmed_unprocessed",
+                        "shipped",
+                      ].includes(t.order?.workflowStage)
+                    ? "Processing"
+                    : ["pending_review", "reviewed"].includes(
+                          t.order?.workflowStage,
+                        )
+                      ? "After Delivery"
+                      : "Pre Processing"}
+              </dd>
+            </div>
+            <div>
+              <dt>Current step</dt>
+              <dd>
+                {(
+                  {
+                    pending_confirmation: "Customer confirmation",
+                    done: "Vendor follow-up",
+                    confirmed_unprocessed: "Awaiting pickup / dispatch",
+                    collected_by_logistics: "Logistics follow-up",
+                    shipped: "Delivery follow-up",
+                    pending_review: "Customer review",
+                    customer_response: "Return: customer response",
+                    vendor_response: "Return: vendor response",
+                    hold: "Resolve order hold",
+                    rescheduled: "Scheduled callback",
+                  } as Record<string, string>
+                )[t.order?.workflowStage] || "Check order details"}
+              </dd>
+            </div>
+            <div>
+              <dt>Assigned to</dt>
+              <dd>{t.assigneeName || "Unassigned"}</dd>
+            </div>
+            <div>
+              <dt>Follow-up</dt>
+              <dd>{time(t.nextAttemptAt || t.dueAt)}</dd>
+            </div>
+          </dl>
+          {t.assignmentHistory?.length > 0 && (
+            <p className="assignment-reason">
+              {t.assignmentHistory.at(-1).reason}
+            </p>
+          )}
+        </details>{" "}
+        {canAssign && !closed && (
+          <details className="work-disclosure">
+            <summary>Reassign task</summary>
+            <div className="form-section">
+              <label>
+                Transfer {person.vendor ? "vendor group" : "task"}
+                <select
+                  value={transfer}
+                  onChange={(e) => setTransfer(e.target.value)}
+                >
+                  <option value="">Choose an employee</option>
+                  {employees
+                    .filter((e) => e.isActive && !e.deletedAt)
+                    .map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.name} · {e.open} open
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <button
+                className="quiet-button"
+                disabled={busy || !transfer}
+                onClick={reassign}
+              >
+                Transfer assignment
+              </button>
+            </div>
+          </details>
+        )}
+        <details className="call-history work-disclosure">
+          <summary>Conversation history ({t.attempts?.length || 0})</summary>
           {!(t.attempts || []).length ? (
             <p>No attempts recorded yet.</p>
           ) : (
@@ -925,8 +953,42 @@ function TaskPanel({
               </article>
             ))
           )}
-        </section>
+        </details>
       </div>
+      {!closed && (
+        <div className="task-actions">
+          {person.phone && t.type !== "order-check" && (
+            <>
+              {!t.activeUntil || new Date(t.activeUntil) < new Date() ? (
+                <button
+                  type="button"
+                  className="quiet-button"
+                  disabled={busy}
+                  onClick={prepare}
+                >
+                  <Phone size={17} /> Start{" "}
+                  {person.vendor ? "vendor" : "customer"} call
+                </button>
+              ) : (
+                <a
+                  className="quiet-button"
+                  href={`tel:${String(person.phone).replace(/[^+\d]/g, "")}`}
+                >
+                  <Phone size={17} /> Open dialer
+                </a>
+              )}
+            </>
+          )}
+          <button
+            form="task-outcome"
+            type="submit"
+            className="solid-button"
+            disabled={busy || !draft.outcome}
+          >
+            {busy ? "Saving…" : "Save outcome"}
+          </button>
+        </div>
+      )}
     </>
   );
 }

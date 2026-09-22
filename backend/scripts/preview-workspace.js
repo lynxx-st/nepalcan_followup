@@ -56,6 +56,7 @@ async function main() {
       commerceOrderId: oid,
       orderId: `PREVIEW-${100 + i}`,
       customer: {
+        confirmationStatus: i < 3 ? "confirmed" : "pending",
         name: [
           "Preview Customer A",
           "Preview Customer B",
@@ -95,9 +96,10 @@ async function main() {
     });
   }
   const { app } = require("../server");
-  const server = app.listen(3001, "127.0.0.1", () =>
+  const previewPort = Number(process.env.PREVIEW_PORT || 3011);
+  const server = app.listen(previewPort, "127.0.0.1", () =>
     console.log(
-      "Disposable workspace preview ready on port 3001. Synthetic data only.",
+      `Disposable workspace preview ready on port ${previewPort}. Synthetic data only.`,
     ),
   );
   const stop = async () => {
