@@ -274,6 +274,12 @@ async function getSegmentCounts(req, res) {
         ? CommerceOrder.countDocuments({ ...rbacQuery, workflowStage: 'pending_review', externalCreatedAt: { $gte: new Date(commerceSync.pendingReviewStartDate) } })
         : (result.pending_review || 0),
     ]);
+    const returnScope = { isActive: { $ne: false }, status: { $not: /delivered/i } };
+    if (!['admin', 'super-admin'].includes(req.user.role)) returnScope.externalReturnId = { $in: await Task.distinct('metadata.returnId', require('../../workspace/service').scope(req.user)) };
+    [result.customer_response, result.vendor_response] = await Promise.all([
+      OrderReturn.countDocuments({ ...returnScope, workflowStage: 'customer_response' }),
+      OrderReturn.countDocuments({ ...returnScope, workflowStage: 'vendor_response' }),
+    ]);
     result.cancelled = cancelledActive;
     result.system_cancelled = systemCancelled;
     result.unrecoverable = unrecoverableCount;
@@ -772,8 +778,9 @@ async function getSyncStatus(req, res) {
 async function getReturns(req, res) {
   try {
     const { stage = 'customer_response', search, page = 1, limit = 20 } = req.query;
-    const query = {};
+    const query = { isActive: { $ne: false }, status: { $not: /delivered/i } };
     if (!['admin','super-admin'].includes(req.user.role)) query.externalReturnId={$in:await Task.distinct('metadata.returnId',require('../../workspace/service').scope(req.user))};
+    const visibility = { ...query };
     if (stage) query.workflowStage = stage;
     if (search) {
       const regex = new RegExp(search, 'i');
@@ -797,14 +804,19 @@ async function getReturns(req, res) {
     ]);
 
     const [custCount, vendCount] = await Promise.all([
-      OrderReturn.countDocuments({ workflowStage: 'customer_response' }),
-      OrderReturn.countDocuments({ workflowStage: 'vendor_response' }),
+      OrderReturn.countDocuments({ ...visibility, workflowStage: 'customer_response' }),
+      OrderReturn.countDocuments({ ...visibility, workflowStage: 'vendor_response' }),
     ]);
 
+    const tasks = await Task.find({ 'metadata.returnId': { $in: returns.map(r => r.externalReturnId) }, status: { $in: ['pending', 'in-progress', 'overdue'] }, ...require('../../workspace/service').scope(req.user) }).lean();
+    const { decodePhone } = await import('../../workspace/commerce-client.mjs');
     res.json({
       success: true,
       data: {
-        returns,
+        returns: returns.map(r => {
+          const task = tasks.find(t => t.metadata?.returnId === r.externalReturnId);
+          return { ...r, customer: r.customerProfile, customerPhone: decodePhone(r.customerPhone || r.customerProfile?.phone), vendorPhone: decodePhone(r.vendor?.phone), orderStatus: r.status, taskId: task?._id, dueAt: task?.nextAttemptAt || task?.dueAt, priority: task?.priority || 'medium' };
+        }),
         total,
         page: pageNum,
         limit: limitNum,

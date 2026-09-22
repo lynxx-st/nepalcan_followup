@@ -24,6 +24,14 @@ const analyticsRoutes = require('./modules/analytics/routes/analytics.routes');
 const { apiLimiter, authLimiter, internalLimiter } = require('./src/middleware/rateLimiter');
 
 const app = express();
+app.disable('etag');
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'private, no-store, max-age=0');
+  res.set('Pragma', 'no-cache');
+  delete req.headers['if-none-match'];
+  delete req.headers['if-modified-since'];
+  next();
+});
 
 app.use(helmet({
   contentSecurityPolicy: {

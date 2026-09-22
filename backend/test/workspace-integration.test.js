@@ -570,3 +570,24 @@ test("Orders list exposes portal status, confirmations, contacts and current tas
   assert.equal(String(row.taskId), String(followup._id));
   assert.equal(+new Date(row.dueAt), +due);
 });
+test("operational API returns fresh JSON even with an old conditional cache header", async () => {
+  const response = await fetch(base + '/api/v1/workspace/me', { headers: { authorization: `Bearer ${token}`, 'if-none-match': '*', 'if-modified-since': new Date().toUTCString() } });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('cache-control'), /no-store/);
+  assert.equal(response.headers.get('etag'), null);
+  assert.ok((await response.json()).data.employee);
+});
+test("return records, task links and counts use the same employee scope", async () => {
+  const own = await OrderReturn.create({ externalReturnId: 'visible-return-source', orderId: 'RETURN-SOURCE-OWN', workflowStage: 'customer_response', status: 'Initiated', isActive: true });
+  const hidden = await OrderReturn.create({ externalReturnId: 'hidden-return-source', orderId: 'RETURN-SOURCE-OTHER', workflowStage: 'customer_response', status: 'Initiated', isActive: true });
+  const task = await make({ type: 'return-followup', metadata: { returnId: own.externalReturnId } });
+  await make({ type: 'return-followup', assigneeId: b._id, metadata: { returnId: hidden.externalReturnId } });
+  const r = await call('/api/v1/commerce/returns?stage=customer_response&search=RETURN-SOURCE');
+  assert.equal(r.status, 200);
+  assert.equal(r.body.data.total, 1);
+  assert.equal(String(r.body.data.returns[0].taskId), String(task._id));
+  const counts = await call('/api/v1/commerce/orders/segment-counts');
+  assert.equal(counts.body.data.customer_response, r.body.data.counts.customer_response);
+  await OrderReturn.updateOne({ _id: own._id }, { $set: { status: 'Return Delivered' } });
+  assert.equal((await call('/api/v1/commerce/returns?stage=customer_response&search=RETURN-SOURCE')).body.data.total, 0);
+});

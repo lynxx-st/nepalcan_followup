@@ -32,7 +32,7 @@ The application in this repository replaces the Sheets workspace. Google Sheets 
 Implementation and local verification do not imply a production deployment. Configure the database, commerce credentials and CRON_SECRET on the host; migrate and verify historical data before disabling the previous Sheets cron. Never commit credentials or personal exports.
 
 ## Verification recorded 21 September 2026
-- [x] 39 backend tests pass, including disposable MongoDB integration tests and task-specific outcome validation.
+- [x] 41 backend tests pass, including disposable MongoDB integration tests and task-specific outcome validation.
 - [x] TypeScript check passes. Production build and service worker generation pass.
 - [x] Browser checked at 390px mobile and 1440px desktop; mobile employee form has no horizontal overflow.
 - [x] Browser verified a saved no-answer attempt appears in Callbacks.
@@ -62,3 +62,11 @@ Implementation and local verification do not imply a production deployment. Conf
 - [x] Order details open the matching stage; Orders stage links preserve segment selection in the URL.
 - [x] Orders list uses portal status, recorded confirmations, contact numbers and the current task/callback deadline.
 - [x] Local and remote Git histories merged; prior work preserved in backup/followup-before-ui-20260922.
+
+## API freshness and return source correction - 22 September 2026
+- [x] Operational API responses bypass conditional caching and send private no-store headers.
+- [x] Orders return tabs read OrderReturn records; counts use the same active-record and employee visibility rules.
+- [x] Orders refresh every 30 seconds and on focus, with manual refresh, last refresh time and visible failures.
+- [x] Request sequencing prevents a slow response overwriting a newer tab; background refresh keeps existing rows visible.
+- [x] Live verification: 824 portal orders were present in the database. A fresh portal sync completed successfully. Return list and counts both returned 8 with HTTP 200/no-store.
+- [x] 41 backend tests, TypeScript check and production build passed.

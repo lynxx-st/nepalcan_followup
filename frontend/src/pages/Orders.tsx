@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { commerceApi, taskApi } from '../services/api';
@@ -74,6 +74,9 @@ export default function Orders() {
   const { simulatedTimeIso } = useSimulatedTime();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
+  const requestVersion = useRef(0);
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '');
   const [activeStage, setActiveStage] = useState<string>('pre_order');
   const [activeSegment, setActiveSegment] = useState<string>('pending_confirmation');
@@ -112,45 +115,40 @@ export default function Orders() {
   };
 
   const fetchOrders = async (p: number) => {
+    const version = ++requestVersion.current;
+    setLoading(true);
+    setLoadError('');
     try {
-      setLoading(true);
-      const data: any = await commerceApi.getOrders({
-        limit: PAGE_SIZE,
-        page: p,
-        segment: activeSegment,
-        search: searchQuery || undefined,
-        sortBy: sortKey || undefined,
-        sortOrder: sortDir
-      });
-      setOrders(data.data?.orders || []);
+      const isReturn = ['customer_response', 'vendor_response'].includes(activeSegment);
+      const filters = { limit: PAGE_SIZE, page: p, segment: activeSegment, stage: activeSegment, search: searchQuery || undefined, sortBy: sortKey || undefined, sortOrder: sortDir };
+      const [data, counts]: any[] = await Promise.all([
+        isReturn ? commerceApi.getReturns(filters) : commerceApi.getOrders(filters),
+        commerceApi.getSegmentCounts(),
+      ]);
+      if (version !== requestVersion.current) return;
+      setOrders(isReturn ? data.data?.returns || [] : data.data?.orders || []);
       setTotal(data.data?.total || 0);
+      setSegmentCounts(counts.data || {});
+      setRefreshedAt(new Date());
     } catch (err) {
-      console.error('Failed to fetch orders', err);
+      if (version !== requestVersion.current) return;
+      setLoadError('Could not refresh this view. Retry to load current records.');
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchOrders(page);
-  }, [page, activeSegment, searchQuery, sortKey, sortDir]);
-
-  useEffect(() => {
-    const onUpdate = () => {
-      fetchOrders(page);
-      commerceApi.getSegmentCounts().then(res => {
-        if (res?.data) setSegmentCounts(res.data);
-      }).catch(console.error);
-    };
+    setOrders([]);
+    setTotal(0);
+    setRefreshedAt(null);
+    void fetchOrders(page);
+    const onUpdate = () => { void fetchOrders(page); };
+    const timer = window.setInterval(() => { if (!document.hidden) onUpdate(); }, 30000);
     window.addEventListener('orders-updated', onUpdate);
-    return () => window.removeEventListener('orders-updated', onUpdate);
+    window.addEventListener('focus', onUpdate);
+    return () => { requestVersion.current++; clearInterval(timer); window.removeEventListener('orders-updated', onUpdate); window.removeEventListener('focus', onUpdate); };
   }, [page, activeSegment, searchQuery, sortKey, sortDir]);
-
-  useEffect(() => {
-    commerceApi.getSegmentCounts().then(res => {
-      if (res?.data) setSegmentCounts(res.data);
-    }).catch(console.error);
-  }, [activeSegment]);
 
   const handleSkip = async (e: React.MouseEvent, order: any) => {
     e.stopPropagation();
@@ -187,6 +185,7 @@ export default function Orders() {
   };
 
   const getStagePath = (order: any) => {
+    if (order.externalReturnId) return order.taskId ? `/returns?task=${order.taskId}` : '/returns';
     const id = order.commerceOrderId || order._id;
     const stagePaths: Record<string, string> = {
       confirmed_unprocessed: `${id}/confirmed-unprocessed`,
@@ -494,6 +493,12 @@ export default function Orders() {
           );
         })}
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e5e5e5] bg-white px-4 py-3" aria-live="polite">
+        <div><p className="text-sm font-semibold">{loading ? 'Refreshing records...' : loadError ? 'Refresh failed' : `${total} records in this view`}</p>
+          <p className="text-xs text-[#737373]">{refreshedAt ? `Refreshed from app at ${refreshedAt.toLocaleTimeString()}. ` : ''}Portal changes appear after a successful sync.</p></div>
+        <button className="btn-outline min-h-[44px] px-4" disabled={loading} onClick={() => void fetchOrders(page)}>Refresh data</button>
+        {loadError && <p role="alert" className="w-full text-sm text-red-700">{loadError}</p>}
+      </div>
       {/* Desktop: 4-col grid with descriptions */}
       <div className="hidden lg:grid grid-cols-4 gap-3">
         {STAGE_BUNDLES.map((stage) => {
@@ -595,7 +600,7 @@ export default function Orders() {
         </div>
 
         {/* Content View: Desktop Table / Mobile Cards */}
-        {loading ? (
+        {loading && orders.length === 0 ? (
           <div className="text-center py-12 text-xs text-[#737373] animate-pulse">
             Loading order records...
           </div>
