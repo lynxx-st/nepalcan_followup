@@ -923,7 +923,10 @@ class CommerceSyncService {
     }).lean();
     const taskMap = {};
     for (const t of tasks) {
-      taskMap[t.sourceOrder?.orderId] = { taskId: t._id, taskType: t.type };
+      const order = orders.find(o => o.commerceOrderId === t.sourceOrder?.orderId);
+      const expected = order && this.getTaskTypeForStage(order.workflowStage, order);
+      if (!taskMap[t.sourceOrder?.orderId] || t.type === expected)
+        taskMap[t.sourceOrder?.orderId] = { taskId: t._id, taskType: t.type, slaMinutes: t.slaMinutes, dueAt: t.nextAttemptAt || t.dueAt };
     }
     const enrichedOrders = orders.map(o => {
       const rawTotal = o.totalAmount || o.commerce?.totalAmount;
@@ -941,6 +944,11 @@ class CommerceSyncService {
 
       return {
         ...o,
+        orderStatus: o.commerce?.orderStatus || o.orderStatus,
+        confirmationStatus: o.customer?.confirmationStatus || o.confirmationStatus,
+        vendorStatus: o.vendor?.vendorStatus || o.vendorStatus,
+        customerPhone: o.customer?.phone || o.customerPhone,
+        vendorPhone: o.vendor?.phone || o.vendorPhone,
         totalAmount,
         taskId: activeTask?.taskId || null,
         activeTaskType,

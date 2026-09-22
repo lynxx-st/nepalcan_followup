@@ -32,7 +32,7 @@ The application in this repository replaces the Sheets workspace. Google Sheets 
 Implementation and local verification do not imply a production deployment. Configure the database, commerce credentials and CRON_SECRET on the host; migrate and verify historical data before disabling the previous Sheets cron. Never commit credentials or personal exports.
 
 ## Verification recorded 21 September 2026
-- [x] 38 backend tests pass, including disposable MongoDB integration tests and task-specific outcome validation.
+- [x] 39 backend tests pass, including disposable MongoDB integration tests and task-specific outcome validation.
 - [x] TypeScript check passes. Production build and service worker generation pass.
 - [x] Browser checked at 390px mobile and 1440px desktop; mobile employee form has no horizontal overflow.
 - [x] Browser verified a saved no-answer attempt appears in Callbacks.
@@ -54,3 +54,11 @@ Implementation and local verification do not imply a production deployment. Conf
 - [x] Return & Recovery respects the return customer/vendor response sequence and retains hold follow-up separately.
 - [x] Missing contact details fetch when a task opens, with a retry action; list sync preserves fetched numbers.
 - [x] Running API verified: the reported example is Processing/logistics follow-up, both contact numbers are present, and no advanced orders request customer confirmation.
+
+## Compact workspace verification - 22 September 2026
+- [x] Customer and vendor names/numbers remain visible together; contact selection uses explicit buttons where the workflow allows either person.
+- [x] The task body scrolls independently with its call/save action bar always reachable.
+- [x] Tested desktop and 390px mobile, including scrolling to the end and saving a synthetic no-answer outcome.
+- [x] Order details open the matching stage; Orders stage links preserve segment selection in the URL.
+- [x] Orders list uses portal status, recorded confirmations, contact numbers and the current task/callback deadline.
+- [x] Local and remote Git histories merged; prior work preserved in backup/followup-before-ui-20260922.

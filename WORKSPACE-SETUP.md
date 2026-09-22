@@ -43,7 +43,7 @@ No production database migration, historical import, deployment, or cron change 
 
 - Backend: `npm test` (includes an isolated in-memory MongoDB integration suite; never uses the configured production database for those integration tests).
 - Frontend: `npm run lint` and `npm run build`.
-- Optional disposable preview: from `backend`, run `node scripts/preview-workspace.js`; from `frontend`, run `npm run dev`. Preview credentials are `preview` / `Preview-only-2026`; all preview records are synthetic and disappear when the preview database stops. Never use that account or preview script in production.
+- Optional disposable preview: build the frontend first, then from `backend` run `node scripts/preview-workspace.js` and open `http://127.0.0.1:3011`. Set `PREVIEW_PORT` to use another port. Preview credentials are `preview` / `Preview-only-2026`; all preview records are synthetic and disappear when the preview database stops. Never use that account or preview script in production.
 
 ## Operational limits
 

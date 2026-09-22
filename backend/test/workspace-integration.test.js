@@ -554,3 +554,19 @@ test("settings API validates and persists confirmation order", async () => {
     200,
   );
 });
+test("Orders list exposes portal status, confirmations, contacts and current task deadline", async () => {
+  const key = String(new mongoose.Types.ObjectId());
+  const due = new Date(Date.now() + 3600000);
+  await CommerceOrder.create({ commerceOrderId: key, orderId: "LIST-FLOW-CHECK", workflowStage: "collected_by_logistics", commerce: { orderStatus: "Processing" }, customer: { confirmationStatus: "confirmed", phone: "9800000001" }, vendor: { vendorStatus: "accepted", phone: "9800000002" } });
+  const followup = await make({ type: "logistics-followup", sourceOrder: { orderId: key }, nextAttemptAt: due, slaMinutes: 120 });
+  await make({ type: "order-check", sourceOrder: { orderId: key } });
+  const { commerceSync } = require("../modules/commerce/service/commerce.sync.service");
+  const result = await commerceSync.getOrders({ search: "LIST-FLOW-CHECK" });
+  const row = result.orders[0];
+  assert.equal(row.orderStatus, "Processing");
+  assert.equal(row.confirmationStatus, "confirmed");
+  assert.equal(row.vendorStatus, "accepted");
+  assert.equal(row.customerPhone, "9800000001");
+  assert.equal(String(row.taskId), String(followup._id));
+  assert.equal(+new Date(row.dueAt), +due);
+});
