@@ -141,14 +141,14 @@ test("portal advancement retires stale confirmation and retains attempts", async
     "sourceOrder.orderId": key,
     status: "pending",
   });
-  assert.equal(next.type, "logistics-followup");
+  assert.equal(next, null);
   await S.reconcileOrderStages();
   assert.equal(
     await Task.countDocuments({
       "sourceOrder.orderId": key,
       status: "pending",
     }),
-    1,
+    0,
   );
   await CommerceOrder.updateOne(
     { commerceOrderId: key },
@@ -590,4 +590,27 @@ test("return records, task links and counts use the same employee scope", async 
   assert.equal(counts.body.data.customer_response, r.body.data.counts.customer_response);
   await OrderReturn.updateOne({ _id: own._id }, { $set: { status: 'Return Delivered' } });
   assert.equal((await call('/api/v1/commerce/returns?stage=customer_response&search=RETURN-SOURCE')).body.data.total, 0);
+});
+test("task queue includes product, variant, quantity, price and order total", async () => {
+  const key = String(new mongoose.Types.ObjectId());
+  await CommerceOrder.create({ commerceOrderId: key, orderId: "ITEM-DETAIL-TEST", commerce: { orderStatus: "Pending", totalAmount: 1350, shippingAmount: 150, paymentMethod: "Cash", items: [{ product: { productName: "Cotton shirt" }, variant: { title: "Blue / M" }, quantity: 2, price: 600 }] } });
+  const task = await make({ sourceOrder: { orderId: key } });
+  const rows = await S.queue({ userId: a._id, role: "staff" });
+  const item = rows.find(t => String(t._id) === String(task._id)).order;
+  assert.equal(item.items[0].product.productName, "Cotton shirt");
+  assert.equal(item.items[0].variant.title, "Blue / M");
+  assert.equal(item.items[0].quantity, 2);
+  assert.equal(item.items[0].price, 600);
+  assert.equal(item.amount, 1350);
+  assert.equal(item.shippingAmount, 150);
+});
+test("processing and shipped orders retire logistics and order-check tasks", async () => {
+  for (const status of ['Processing', 'Shipped']) {
+    const key = String(new mongoose.Types.ObjectId());
+    await CommerceOrder.create({ commerceOrderId: key, orderId: `LOGISTICS-${status}`, commerce: { orderStatus: status } });
+    for (const type of ['logistics-followup', 'order-check']) await make({ type, sourceOrder: { orderId: key } });
+    await S.reconcile();
+    assert.equal(await Task.countDocuments({ 'sourceOrder.orderId': key, status: { $in: ['pending','overdue','in-progress'] } }), 0);
+    assert.equal(await Task.countDocuments({ 'sourceOrder.orderId': key, closedAt: { $ne: null } }), 2);
+  }
 });

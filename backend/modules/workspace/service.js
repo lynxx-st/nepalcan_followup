@@ -54,7 +54,16 @@ async function owned(taskId, user) {
 function taskFitsOrder(task, order) {
   const { commerceSync } = require("../commerce/service/commerce.sync.service");
   const stage = commerceSync.computeWorkflowStage(order);
-  if (["cancelled", "returned", "reviewed"].includes(stage)) return false;
+  if (
+    [
+      "cancelled",
+      "returned",
+      "reviewed",
+      "collected_by_logistics",
+      "shipped",
+    ].includes(stage)
+  )
+    return false;
   if (task.type === "order-check") return stage === "collected_by_logistics";
   if (task.type === "escalation")
     return ["pending_confirmation", "done", "hold", "rescheduled"].includes(
@@ -88,7 +97,7 @@ async function reconcileOrderStages(orderKeys) {
         String(t.sourceOrder?.orderId || t.orderId) === order.commerceOrderId &&
         !taskFitsOrder(t, order),
     );
-    if (!obsolete.length) continue;
+    if (!obsolete.length && order.workflowStage === stage) continue;
     await Task.updateMany(
       { _id: { $in: obsolete.map((t) => t._id) }, ...activeQuery },
       {
@@ -112,7 +121,7 @@ async function reconcileOrderStages(orderKeys) {
     )
       continue;
     await ensureTask(
-      `lifecycle:${order.commerceOrderId}:${stage}:${obsolete[0]._id}`,
+      `lifecycle:${order.commerceOrderId}:${stage}:${obsolete[0]?._id || "stage"}`,
       {
         type: next.taskType,
         priority: next.priority,
@@ -126,10 +135,10 @@ async function reconcileOrderStages(orderKeys) {
         },
         slaMinutes: next.slaMinutes,
         dueAt: new Date(Date.now() + next.slaMinutes * 60000),
-        assigneeId: obsolete[0].assigneeId,
-        assigneeName: obsolete[0].assigneeName,
+        assigneeId: obsolete[0]?.assigneeId,
+        assigneeName: obsolete[0]?.assigneeName,
         assignedAt: new Date(),
-        metadata: { team: obsolete[0].metadata?.team },
+        metadata: { team: obsolete[0]?.metadata?.team },
       },
     );
   }
@@ -143,6 +152,13 @@ async function refreshContact(taskId, user) {
   const detail = await client.commerce(`/marketplace-orders/${key}`);
   const c = client.normalizeContacts(detail.data || detail, key);
   const fields = { contactCheckedAt: new Date() };
+  const source = detail.data || detail;
+  if (Array.isArray(source.items) && source.items.length)
+    fields["commerce.items"] = source.items;
+  for (const key of ["totalAmount", "shippingAmount", "paymentMethod"]) {
+    if (source[key] !== undefined && source[key] !== null)
+      fields[`commerce.${key}`] = source[key];
+  }
   if (c.customerPhone) fields["customer.phone"] = c.customerPhone;
   if (c.vendorPhone) fields["vendor.phone"] = c.vendorPhone;
   await CommerceOrder.updateOne({ commerceOrderId: key }, { $set: fields });
@@ -423,7 +439,11 @@ async function queue(user, team = false) {
                   ),
               followUpOrder: returned?.followUpOrder,
               orderStatus: order.commerce?.orderStatus || order.orderStatus,
-              amount: order.commerce?.totalAmount || order.totalAmount,
+              amount: order.commerce?.totalAmount ?? order.totalAmount,
+              paymentMethod:
+                order.commerce?.paymentMethod || order.paymentMethod,
+              shippingAmount:
+                order.commerce?.shippingAmount ?? order.shippingAmount,
               items: order.commerce?.items || order.items,
             }
           : null,
@@ -928,26 +948,6 @@ async function reconcile() {
     );
   }
   await reconcileOrderStages();
-  const processing = await CommerceOrder.find({
-    $or: [
-      { orderStatus: "Processing" },
-      { "commerce.orderStatus": "Processing" },
-    ],
-  })
-    .select("commerceOrderId orderId")
-    .lean();
-  for (const order of processing)
-    await ensureTask(`check:${order.commerceOrderId}`, {
-      type: "order-check",
-      priority: "low",
-      reason:
-        "Check the order contact and delivery details. Flag missing information in your notes. No call required.",
-      sourceOrder: {
-        orderId: order.commerceOrderId,
-        orderNumber: order.orderId,
-      },
-      slaMinutes: 1440,
-    });
   const returns = await OrderReturn.find({ isActive: { $ne: false } }).lean();
   for (const r of returns) {
     if (/delivered/i.test(r.status || "") || r.workflowStage === "completed") {

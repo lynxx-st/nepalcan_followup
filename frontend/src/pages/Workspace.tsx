@@ -122,6 +122,96 @@ function contact(t: Row, party?: string) {
   };
 }
 
+const money = (value: any) =>
+  value !== null &&
+  value !== undefined &&
+  value !== "" &&
+  Number.isFinite(Number(value))
+    ? `Rs. ${Number(value).toLocaleString("en-NP", { maximumFractionDigits: 2 })}`
+    : "Not provided";
+function OrderItems({ order }: { order: Row }) {
+  const items: Row[] = Array.isArray(order?.items) ? order.items : [];
+  return (
+    <section className="task-order-items" aria-label="Order contents">
+      <div className="items-heading">
+        <h3>Order contents</h3>
+        <span>
+          {items.length} product{items.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {items.length ? (
+        items.map((item, index) => {
+          const product = item.product || {};
+          const name =
+            typeof product === "string"
+              ? product
+              : product.productName ||
+                product.title ||
+                item.productName ||
+                item.title ||
+                item.name ||
+                "Product name unavailable";
+          const v =
+            item.variant ||
+            item.variantTitle ||
+            item.variantName ||
+            product.variant;
+          const variant =
+            typeof v === "string"
+              ? v
+              : v?.option ||
+                v?.title ||
+                v?.name ||
+                [v?.option1, v?.option2, v?.option3]
+                  .filter(Boolean)
+                  .join(" / ");
+          const price =
+            item.price ??
+            item.unitPrice ??
+            product.sellingPrice ??
+            item.variant?.sellingPrice;
+          const qty = item.quantity ?? item.qty;
+          const lineTotal =
+            item.totalPrice ??
+            (qty != null && price != null ? Number(qty) * Number(price) : null);
+          return (
+            <article key={item._id || index} className="task-product">
+              <div>
+                <strong>{name}</strong>
+                {variant && variant !== "Default Title" && (
+                  <small>{variant}</small>
+                )}
+                <span>
+                  Quantity: <b>{qty ?? "Not provided"}</b>{" "}
+                  <span aria-hidden="true">·</span> Unit price: {money(price)}
+                </span>
+              </div>
+              <b>{money(lineTotal)}</b>
+            </article>
+          );
+        })
+      ) : (
+        <p>
+          Product details have not loaded yet. Use Refresh order details or open
+          the full order.
+        </p>
+      )}
+      <div className="task-order-total">
+        <span>Order total</span>
+        <strong>{money(order?.amount)}</strong>
+      </div>
+      {(order?.paymentMethod || order?.shippingAmount != null) && (
+        <p className="order-payment">
+          {order.paymentMethod || "Payment method not provided"}
+          {order.shippingAmount != null
+            ? ` · Delivery: ${money(order.shippingAmount)}`
+            : ""}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function ErrorMessage({ message }: { message: string }) {
   return message ? (
     <p className="work-error" role="alert">
@@ -522,7 +612,11 @@ function TaskPanel({
   }
 
   useEffect(() => {
-    if (!person.phone && !t.closedAt && t.status !== "completed")
+    if (
+      (!person.phone || !t.order?.items?.length) &&
+      !t.closedAt &&
+      t.status !== "completed"
+    )
       void loadContact();
   }, [t._id, person.vendor]);
 
@@ -655,6 +749,7 @@ function TaskPanel({
             View order stage
           </Link>
         </div>
+        <OrderItems order={t.order || {}} />
         <div className="contact-cards" aria-label="Order contacts">
           {(["customer", "vendor"] as const).map((party) => {
             const details = contact(t, party);
@@ -694,16 +789,16 @@ function TaskPanel({
             );
           })}
         </div>
-        {(!contact(t, "customer").phone || !contact(t, "vendor").phone) && (
+        {(!contact(t, "customer").phone ||
+          !contact(t, "vendor").phone ||
+          !t.order?.items?.length) && (
           <button
             className="contact-refresh"
             disabled={contactLoading}
             onClick={loadContact}
           >
             <RefreshCw size={13} />
-            {contactLoading
-              ? "Fetching contacts..."
-              : "Refresh portal contacts"}
+            {contactLoading ? "Fetching contacts..." : "Refresh order details"}
           </button>
         )}
         <div className="work-meta">

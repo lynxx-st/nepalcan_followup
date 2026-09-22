@@ -35,7 +35,7 @@ console.log('commerce-sync-stage OK');
 for (const paymentStatus of ['Pending', 'Paid']) {
   for (const orderStatus of ['Processing', 'Shipped']) {
     const o = { commerce: { orderStatus, paymentStatus }, customer: { confirmationStatus: 'pending' }, vendor: { vendorStatus: 'unassigned' } };
-    assert.equal(commerceSync.getPriorityForOrder(o).taskType, 'logistics-followup');
+    assert.equal(commerceSync.getPriorityForOrder(o), null);
   }
 }
 assert.equal(stage('Processing', 'rescheduled', 'unassigned'), 'collected_by_logistics');

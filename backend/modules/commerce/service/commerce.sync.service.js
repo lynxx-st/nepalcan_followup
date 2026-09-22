@@ -619,7 +619,7 @@ class CommerceSyncService {
     const unAttendedCount = c.unAttendedCount ?? order.unAttendedCount;
     const totalAmount = c.totalAmount ?? order.totalAmount;
     const stage = this.computeWorkflowStage(order);
-    if (['cancelled', 'reviewed', 'returned', 'other'].includes(stage)) return null;
+    if (['cancelled', 'reviewed', 'returned', 'other', 'collected_by_logistics', 'shipped'].includes(stage)) return null;
     let priority = 'medium';
     let taskType = 'customer-confirmation';
     let slaMinutes = this.slaDefaults['customer-confirmation'];

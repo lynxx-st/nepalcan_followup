@@ -60,8 +60,10 @@ In **Settings → Pre Processing → Who should we confirm with first?**, choose
 | Orders section | Task flow |
 | --- | --- |
 | Pre Processing | Customer then vendor, or vendor then customer, according to Settings. Rescheduled work follows the outstanding confirmation. |
-| Processing | Both confirmations complete → awaiting pickup/dispatch. Portal Processing → logistics follow-up. Shipped → delivery follow-up. Payment pending never sends these orders back to confirmation. |
+| Processing | Both confirmations complete: awaiting pickup/dispatch stays actionable. Portal Processing and Shipped remain visible in Orders but do not generate routine My Tasks work. Delivered orders enter the review flow. |
 | After Delivery | Delivered → customer review → closed history. No answer stays in follow-up. |
 | Return & Recovery | Returns follow the existing customer-first/vendor-first return response setting. Customer confirmation leads to vendor response; rejection or vendor decision closes the response workflow. Hold orders use escalation/follow-up. Return Delivered closes active return work. |
 
 Tasks display their Orders section and current step. Missing numbers load from the portal detail endpoint when a task opens; **Retry portal contact** retries a failed lookup. Logistics/hold follow-up lets the employee choose customer or vendor and records that choice in the attempt history. A resolved follow-up does not invent a delivery update in the portal.
+
+Tasks show the selected order's products, variants, quantities, unit prices, line totals, delivery amount and order total. Missing values are marked as not provided. Opening a task with no line items fetches the portal order details; the refresh action can retry this lookup.

@@ -32,7 +32,7 @@ The application in this repository replaces the Sheets workspace. Google Sheets 
 Implementation and local verification do not imply a production deployment. Configure the database, commerce credentials and CRON_SECRET on the host; migrate and verify historical data before disabling the previous Sheets cron. Never commit credentials or personal exports.
 
 ## Verification recorded 21 September 2026
-- [x] 41 backend tests pass, including disposable MongoDB integration tests and task-specific outcome validation.
+- [x] 43 backend tests pass, including disposable MongoDB integration tests and task-specific outcome validation.
 - [x] TypeScript check passes. Production build and service worker generation pass.
 - [x] Browser checked at 390px mobile and 1440px desktop; mobile employee form has no horizontal overflow.
 - [x] Browser verified a saved no-answer attempt appears in Callbacks.
@@ -70,3 +70,11 @@ Implementation and local verification do not imply a production deployment. Conf
 - [x] Request sequencing prevents a slow response overwriting a newer tab; background refresh keeps existing rows visible.
 - [x] Live verification: 824 portal orders were present in the database. A fresh portal sync completed successfully. Return list and counts both returned 8 with HTTP 200/no-store.
 - [x] 41 backend tests, TypeScript check and production build passed.
+
+## Logistics handoff and order contents - 22 September 2026
+- [x] Portal Processing and Shipped stop routine calling/order-check tasks; existing tasks are archived with history preserved.
+- [x] Awaiting dispatch, delivered reviews and active returns retain their own appropriate workflows.
+- [x] Product names, variants, quantities, unit/line prices and order totals appear directly in the compact task panel.
+- [x] Portal details fill missing line items as well as contact numbers.
+- [x] Running database verified: zero active routine tasks for orders already in logistics.
+- [x] 43 backend tests passed, including logistics exclusion and complete line-item payload checks.
