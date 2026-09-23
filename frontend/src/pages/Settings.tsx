@@ -124,7 +124,7 @@ export default function SettingsPage() {
     setSaving(true);
     try {
       await settingsApi.update(values);
-      toast.success("Settings saved — next sync will use new values");
+      toast.success("Settings saved — refresh your work queues to see changes");
     } catch {
       toast.error("Failed to save settings");
     } finally {
@@ -158,6 +158,14 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <section className="card-blueprint p-6 space-y-3">
+        <h2 className="text-lg font-bold">Pending work window</h2>
+        <p className="text-sm text-[#737373]">Show pending work for orders placed on or after this date across My Tasks, Orders, Reviews, Returns and team workload. The date starts at midnight in Nepal.</p>
+        <label htmlFor="pending-work-start" className="block text-sm font-bold">Start from order date</label>
+        <div className="flex gap-3 flex-wrap"><input id="pending-work-start" type="date" className="input-blueprint" value={values.pendingWorkStartDate || ""} onChange={e => setValues(v => ({ ...v, pendingWorkStartDate: e.target.value }))} /><button type="button" className="btn-outline" onClick={() => setValues(v => ({ ...v, pendingWorkStartDate: "" }))}>Show all dates</button></div>
+        <p className="text-xs text-[#737373]">{values.pendingWorkStartDate ? `Pending work before ${values.pendingWorkStartDate} will be hidden and excluded from assignment.` : "All pending work is included."} Completed work and call history are kept. Save changes to apply; clearing this date restores older pending work.</p>
+      </section>
 
       <section className="card-blueprint p-6 space-y-3">
         <h2 className="text-lg font-bold">Pre Processing</h2>

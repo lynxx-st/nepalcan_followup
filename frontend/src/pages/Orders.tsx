@@ -75,6 +75,7 @@ export default function Orders() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [workStart, setWorkStart] = useState('');
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
   const requestVersion = useRef(0);
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') || '');
@@ -128,6 +129,7 @@ export default function Orders() {
       if (version !== requestVersion.current) return;
       setOrders(isReturn ? data.data?.returns || [] : data.data?.orders || []);
       setTotal(data.data?.total || 0);
+      setWorkStart(data.data?.pendingWorkStartDate || "");
       setSegmentCounts(counts.data || {});
       setRefreshedAt(new Date());
     } catch (err) {
@@ -443,6 +445,7 @@ export default function Orders() {
   return (
     <div className="space-y-6 pb-16 animate-in">
       <Breadcrumbs items={[{ label: 'Orders Management' }]} />
+      {workStart && <p className="text-sm text-[#525252] bg-white rounded-lg p-3 border border-[#e5e5e5]">Pending work from <strong>{workStart}</strong> · order date, Nepal time</p>}
 
       {/* Header Container */}
       <div className="card-blueprint p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-5">

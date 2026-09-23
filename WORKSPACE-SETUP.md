@@ -67,3 +67,13 @@ In **Settings → Pre Processing → Who should we confirm with first?**, choose
 Tasks display their Orders section and current step. Missing numbers load from the portal detail endpoint when a task opens; **Retry portal contact** retries a failed lookup. Logistics/hold follow-up lets the employee choose customer or vendor and records that choice in the attempt history. A resolved follow-up does not invent a delivery update in the portal.
 
 Tasks show the selected order's products, variants, quantities, unit prices, line totals, delivery amount and order total. Missing values are marked as not provided. Opening a task with no line items fetches the portal order details; the refresh action can retry this lookup.
+
+## Pending work window and product photos
+
+In **Settings → Pending work window**, select **Start from order date**, then **Save Settings**. The selected day is inclusive from midnight Asia/Kathmandu. My Tasks, active Orders, Reviews, Returns, workload counts and automatic assignment use the same window. Clear it with **Show all dates** and save to restore older pending work. No tasks or call history are deleted. Completed work and historical analytics stay available.
+
+The portal order creation date is preferred; the stored order creation date is the fallback. Tasks or returns with no matching order use their own creation date. The existing review-specific date can further narrow the review list.
+
+My Tasks includes product thumbnails in the conversation list and a photo gallery beside each product's variant, quantity and price. These are portal images; missing or broken images show an explicit fallback. **Refresh order details** updates cached items and photos. Select Customers or Vendors to narrow the queue, or search by product, order or contact. After recording an outcome, **Next conversation** opens the next available task. Vendor retries update only orders inside the selected date window.
+
+Verification: backend date-boundary, reversible-filter and vendor-batch tests; frontend type check/build; browser checks for photo gallery, 390px layout, outcome/next flow and date settings.

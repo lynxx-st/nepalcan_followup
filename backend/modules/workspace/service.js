@@ -1,3 +1,4 @@
+const W = require('./work-window');
 const crypto = require("crypto");
 const {
   Task,
@@ -31,6 +32,8 @@ async function owned(taskId, user) {
   if (!mongoose.isValidObjectId(taskId)) fail("Task not found", 404);
   const task = await Task.findOne({ _id: taskId, ...scope(user) }).lean();
   if (!task) fail("Task not found or not assigned to you", 404);
+  if (!(await Task.exists(W.and({ _id: task._id }, await W.taskFilter()))))
+    fail("This task is outside the workspace start date. Refresh your tasks.", 409);
   if (task.metadata?.returnId && E.WORK.includes(task.status)) {
     const returned = await OrderReturn.findOne({
       externalReturnId: task.metadata.returnId,
@@ -237,7 +240,7 @@ async function rebalanceUnlocked() {
   await reconcile();
   const now = new Date(),
     [tasks, members, shifts, settings] = await Promise.all([
-      Task.find(activeQuery).lean(),
+      Task.find(W.and(activeQuery, await W.taskFilter())).lean(),
       Admin.find({ isActive: true, deletedAt: null }).lean(),
       UserAttendance.find({
         status: "checked-in",
@@ -362,7 +365,7 @@ async function rebalanceUnlocked() {
     );
   return {
     changed: changes.length,
-    unassigned: await Task.countDocuments({ ...activeQuery, assigneeId: null }),
+    unassigned: await Task.countDocuments(W.and({ ...activeQuery, assigneeId: null }, await W.taskFilter())),
   };
 }
 const rebalance = () => lease("assignments", rebalanceUnlocked);
@@ -370,6 +373,7 @@ async function queue(user, team = false) {
   if (team && !manager(user)) fail("Manager access required", 403);
   await reconcileOrderStages();
   const tasks = await Task.find({
+    $and: [await W.taskFilter()],
     ...(team ? scope(user) : { assigneeId: actorId(user) }),
     $or: [
       { ...activeQuery },
@@ -406,7 +410,9 @@ async function queue(user, team = false) {
       );
       const order = returned
         ? {
+            ...map.get(returned.commerceOrderId),
             ...returned,
+            commerce: map.get(returned.commerceOrderId)?.commerce,
             customer: {
               ...returned.customerProfile,
               phone:
@@ -438,7 +444,7 @@ async function queue(user, team = false) {
                     order,
                   ),
               followUpOrder: returned?.followUpOrder,
-              orderStatus: order.commerce?.orderStatus || order.orderStatus,
+              orderStatus: returned ? returned.status : order.commerce?.orderStatus || order.orderStatus,
               amount: order.commerce?.totalAmount ?? order.totalAmount,
               paymentMethod:
                 order.commerce?.paymentMethod || order.paymentMethod,
@@ -578,6 +584,7 @@ async function recordOutcome(taskId, input, user) {
       );
     const group = batch
       ? await Task.find({
+          $and: [await W.taskFilter()],
           vendorKey: task.vendorKey,
           type: { $in: ["vendor-call", "vendor-delay"] },
           assigneeId: task.assigneeId,
@@ -665,6 +672,7 @@ async function start(taskId, user) {
           ...activeQuery,
         }
       : { _id: taskId };
+    query.$and = [await W.taskFilter()];
     const callSessionId = crypto.randomUUID();
     await Task.updateMany(query, {
       $set: {
@@ -689,6 +697,7 @@ async function assign(taskId, assigneeId, user) {
           ...activeQuery,
         }
       : { _id: taskId, ...activeQuery };
+    query.$and = [await W.taskFilter()];
     const group = await Task.find(query).lean();
     if (
       !employee ||
@@ -724,6 +733,7 @@ async function reports(user) {
   )
     .select("-passwordHash")
     .lean();
+  const visibleIds = new Set((await Task.find(W.and(scope(user), await W.taskFilter())).select("_id").lean()).map(t => String(t._id)));
   const tasks = await Task.find(scope(user))
     .select(
       "assigneeId status attempts completedBy completedAt assignedAt createdAt dueAt nextAttemptAt",
@@ -766,7 +776,7 @@ async function reports(user) {
       ...p,
       medianResolutionMinutes,
       open: tasks.filter(
-        (t) => E.WORK.includes(t.status) && E.id(t.assigneeId) === E.id(m),
+        (t) => visibleIds.has(String(t._id)) && E.WORK.includes(t.status) && E.id(t.assigneeId) === E.id(m),
       ).length,
       completed: completed.filter((t) => +new Date(t.completedAt) >= cutoff)
         .length,
@@ -781,6 +791,7 @@ async function reports(user) {
       ),
       overdue: tasks.filter(
         (t) =>
+          visibleIds.has(String(t._id)) &&
           E.WORK.includes(t.status) &&
           E.id(t.assigneeId) === E.id(m) &&
           new Date(t.nextAttemptAt || t.dueAt) < new Date(),

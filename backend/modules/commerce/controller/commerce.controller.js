@@ -1,3 +1,4 @@
+const W = require('../../workspace/work-window');
 const axios = require('axios');
 const commerceAuth = require('../service/commerce.auth.service');
 const { commerceSync, deliveryMark } = require('../service/commerce.sync.service');
@@ -147,7 +148,7 @@ async function getOrders(req, res) {
     } = req.query;
     
     await commerceSync.autoUpdateSlaBreachedOrders();
-    const rbacQuery = await buildRbacQuery(req.user);
+    const rbacQuery = W.and(await buildRbacQuery(req.user), await W.orderFilter());
     
     const filters = {
       rbac: rbacQuery,
@@ -237,7 +238,7 @@ async function getReviews(req, res) {
 async function getSegmentCounts(req, res) {
   try {
     await commerceSync.autoUpdateSlaBreachedOrders();
-    const rbacQuery = await buildRbacQuery(req.user);
+    const rbacQuery = W.and(await buildRbacQuery(req.user), await W.orderFilter());
     
     const counts = await CommerceOrder.aggregate([
       { $match: rbacQuery },
@@ -274,7 +275,7 @@ async function getSegmentCounts(req, res) {
         ? CommerceOrder.countDocuments({ ...rbacQuery, workflowStage: 'pending_review', externalCreatedAt: { $gte: new Date(commerceSync.pendingReviewStartDate) } })
         : (result.pending_review || 0),
     ]);
-    const returnScope = { isActive: { $ne: false }, status: { $not: /delivered/i } };
+    const returnScope = { $and: [await W.returnFilter()], isActive: { $ne: false }, status: { $not: /delivered/i } };
     if (!['admin', 'super-admin'].includes(req.user.role)) returnScope.externalReturnId = { $in: await Task.distinct('metadata.returnId', require('../../workspace/service').scope(req.user)) };
     [result.customer_response, result.vendor_response] = await Promise.all([
       OrderReturn.countDocuments({ ...returnScope, workflowStage: 'customer_response' }),
@@ -778,7 +779,7 @@ async function getSyncStatus(req, res) {
 async function getReturns(req, res) {
   try {
     const { stage = 'customer_response', search, page = 1, limit = 20 } = req.query;
-    const query = { isActive: { $ne: false }, status: { $not: /delivered/i } };
+    const query = { $and: [await W.returnFilter()], isActive: { $ne: false }, status: { $not: /delivered/i } };
     if (!['admin','super-admin'].includes(req.user.role)) query.externalReturnId={$in:await Task.distinct('metadata.returnId',require('../../workspace/service').scope(req.user))};
     const visibility = { ...query };
     if (stage) query.workflowStage = stage;
@@ -813,6 +814,7 @@ async function getReturns(req, res) {
     res.json({
       success: true,
       data: {
+        pendingWorkStartDate: await W.startDate(),
         returns: returns.map(r => {
           const task = tasks.find(t => t.metadata?.returnId === r.externalReturnId);
           return { ...r, customer: r.customerProfile, customerPhone: decodePhone(r.customerPhone || r.customerProfile?.phone), vendorPhone: decodePhone(r.vendor?.phone), orderStatus: r.status, taskId: task?._id, dueAt: task?.nextAttemptAt || task?.dueAt, priority: task?.priority || 'medium' };

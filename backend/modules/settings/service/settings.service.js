@@ -14,6 +14,9 @@ class SettingsService {
   }
 
   async update(updates) {
+    if (updates.pendingWorkStartDate !== undefined && !require('../../workspace/work-window').validDate(updates.pendingWorkStartDate)) {
+      throw Object.assign(new Error('Choose a valid start date or clear it to show all pending work'), { statusCode: 400, isOperational: true });
+    }
     for (const [key, value] of Object.entries(updates)) {
       await Setting.findOneAndUpdate({ key }, { $set: { value } }, { upsert: true });
     }

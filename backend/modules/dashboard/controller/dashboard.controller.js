@@ -1,3 +1,4 @@
+const W = require('../../workspace/work-window');
 const { Task, CallLog, RecoveryCampaign, CommerceOrder, UserAttendance } = require('../../../database/models');
 const attendanceService = require('../../attendance/service/attendance.service');
 
@@ -11,15 +12,15 @@ async function getTodayDashboard(req, res, next) {
     const userId = req.userId;
 
     const [todayTasks, totalOrders, activeAttendance, completedTasks, allPendingTasks] = await Promise.all([
-      Task.find({
+      Task.find({ $and: [await W.taskFilter()],
         createdAt: { $gte: today, $lt: tomorrow },
       })
         .sort({ priority: -1, createdAt: 1 })
         .lean(),
       CommerceOrder.countDocuments(),
       userId ? attendanceService.getActiveStatus(userId) : Promise.resolve(null),
-      Task.find({ status: 'completed' }).select('completedAt dueAt createdAt').lean(),
-      Task.find({ status: { $in: ['pending', 'in-progress', 'overdue'] } }).lean(),
+      Task.find({ $and: [await W.taskFilter()], status: 'completed' }).select('completedAt dueAt createdAt').lean(),
+      Task.find({ $and: [await W.taskFilter()], status: { $in: ['pending', 'in-progress', 'overdue'] } }).lean(),
     ]);
 
     // SLA compliance calculation
@@ -86,14 +87,14 @@ async function getTodayDashboard(req, res, next) {
       if (task.status === 'completed') summary.completed++;
     }
 
-    const overdueTasks = await Task.find({
+    const overdueTasks = await Task.find({ $and: [await W.taskFilter()],
       status: { $in: ['pending', 'in-progress', 'overdue'] },
       dueAt: { $lt: new Date() },
     })
       .sort({ priority: -1, dueAt: 1 })
       .lean();
 
-    const nextCall = await Task.findOne({
+    const nextCall = await Task.findOne({ $and: [await W.taskFilter()],
       status: { $in: ['pending', 'overdue'] },
     })
       .sort({ priority: -1, dueAt: 1, createdAt: 1 })
@@ -125,9 +126,9 @@ async function getDashboardStats(req, res, next) {
   try {
     const [totalCompleted, totalOverdue, totalOrders, pendingOrders, cancelledOrders, deliveredOrders] = await Promise.all([
       Task.countDocuments({ status: 'completed' }),
-      Task.countDocuments({ status: 'overdue' }),
+      Task.countDocuments(W.and({ status: 'overdue' }, await W.taskFilter())),
       CommerceOrder.countDocuments(),
-      CommerceOrder.countDocuments({ orderStatus: 'Pending' }),
+      CommerceOrder.countDocuments(W.and({ orderStatus: 'Pending' }, await W.orderFilter())),
       CommerceOrder.countDocuments({ orderStatus: 'Cancelled' }),
       CommerceOrder.countDocuments({ orderStatus: 'Delivered' }),
     ]);

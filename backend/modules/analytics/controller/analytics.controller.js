@@ -1,3 +1,4 @@
+const W = require('../../workspace/work-window');
 const { Task, CallLog, CommerceOrder, OrderReturn, RecoveryCampaign } = require('../../../database/models');
 
 // Build a { createdAt: { $gte, $lte } } filter from ?from / ?to ISO dates.
@@ -32,16 +33,19 @@ async function getAnalyticsOverview(req, res, next) {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const [orderStats, stageCounts, revenueResult, taskStats, completedTasks, returnsTotal, returnsActive, breaches, avgDelivery] = await Promise.all([
+    const [orderStats, stageCounts, revenueResult, taskStats, completedTasks, returnsTotal, returnsActive, breaches, avgDelivery, stageRevenue, taskByType, returnsResolved] = await Promise.all([
       CommerceOrder.countDocuments({ createdAt: { $gte: since } }),
       CommerceOrder.aggregate([{ $match: { createdAt: { $gte: since } } }, { $group: { _id: '$workflowStage', count: { $sum: 1 } } }]),
       CommerceOrder.aggregate([{ $match: { createdAt: { $gte: since } } }, { $group: { _id: null, total: { $sum: '$commerce.totalAmount' } } }]),
-      Task.aggregate([{ $match: { createdAt: { $gte: since } } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Task.aggregate([{ $match: W.and({ createdAt: { $gte: since } }, await W.taskFilter()) }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
       Task.find({ status: 'completed', createdAt: { $gte: since } }).select('dueAt completedAt').lean(),
       OrderReturn.countDocuments({ createdAt: { $gte: since } }),
-      OrderReturn.countDocuments({ workflowStage: { $ne: 'completed' }, createdAt: { $gte: since } }),
+      OrderReturn.countDocuments(W.and({ workflowStage: { $ne: 'completed' }, createdAt: { $gte: since } }, await W.returnFilter())),
       CommerceOrder.countDocuments({ 'sla.slaStatus': 'breached', createdAt: { $gte: since } }),
       CommerceOrder.aggregate([{ $match: { createdAt: { $gte: since } } }, { $group: { _id: null, avgMs: { $avg: '$timeToDeliveryMs' } } }]),
+      CommerceOrder.aggregate([{ $match: { createdAt: { $gte: since } } }, { $group: { _id: '$workflowStage', total: { $sum: '$commerce.totalAmount' } } }]),
+      Task.aggregate([{ $match: W.and({ createdAt: { $gte: since } }, await W.taskFilter()) }, { $group: { _id: '$type', total: { $sum: 1 }, completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } } } }]),
+      OrderReturn.countDocuments({ workflowStage: 'completed', createdAt: { $gte: since } }),
     ]);
 
     const byStage = {};
@@ -67,7 +71,7 @@ async function getAnalyticsOverview(req, res, next) {
       data: {
         orders: { total: orderStats, revenue: (revenueResult[0] && revenueResult[0].total) || 0, byStage, byStageRevenue },
         tasks: { total: totalTasks, byStatus, byType, slaRate: byStatus.completed ? slaRate : null },
-        returns: { total: returnsTotal, active: returnsActive, resolved: returnsTotal - returnsActive },
+        returns: { total: returnsTotal, active: returnsActive, resolved: returnsResolved },
         sla: { breached: breaches },
         delivery: { avgTimeToDeliveryMs: (avgDelivery[0] && Math.round(avgDelivery[0].avgMs)) || null },
       },
@@ -144,7 +148,7 @@ async function getAnalyticsAgentPerformance(req, res, next) {
     const since = sinceDays(req);
     const [taskStats, callStats] = await Promise.all([
       Task.aggregate([
-        { $match: { createdAt: { $gte: since } } },
+        { $match: W.and({ createdAt: { $gte: since } }, await W.taskFilter()) },
         {
           $group: {
             _id: '$assigneeName',
@@ -402,7 +406,7 @@ async function getAnalyticsForecast(req, res, next) {
         { $group: { _id: { $ifNull: [{ $arrayElemAt: ['$task.type', 0] }, 'unknown'] }, orders: { $addToSet: '$orderId' } } },
       ]),
       CommerceOrder.aggregate([
-        { $match: { workflowStage: { $in: Object.keys(FORECAST_STAGE_TYPES) } } },
+        { $match: W.and({ workflowStage: { $in: Object.keys(FORECAST_STAGE_TYPES) } }, await W.orderFilter()) },
         { $group: { _id: '$workflowStage', count: { $sum: 1 } } },
       ]),
     ]);

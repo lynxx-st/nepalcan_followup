@@ -1,3 +1,4 @@
+const W = require('../../workspace/work-window');
 const { Task, TaskTimeline, CommerceOrder, OrderReturn } = require('../../../database/models');
 const { NotFoundError } = require('../../../src/middleware/errorHandler');
 const { scoreNextTask } = require('../../../utils/next-call-scorer');
@@ -67,7 +68,7 @@ class TaskService {
 
   async listTasks(filters) {
     const { status, type, priority, assigneeId, page, limit, sortBy, sortDir } = filters;
-    const query = {};
+    const query = { $and: [await W.taskFilter()] };
     if (status) query.status = status;
     if (type) query.type = type;
     if (priority) query.priority = priority;
@@ -87,7 +88,7 @@ class TaskService {
   }
 
   async getTasksByOrder(orderId, statusFilter) {
-    const query = { 'sourceOrder.orderId': orderId };
+    const query = { 'sourceOrder.orderId': orderId, $and: [await W.taskFilter()] };
     if (statusFilter) query.status = statusFilter;
     return Task.find(query).populate('assigneeId', 'name email').sort({ createdAt: -1 });
   }
@@ -178,6 +179,7 @@ class TaskService {
     const [task] = await Task.aggregate([
       {
         $match: {
+          $and: [await W.taskFilter()],
           $or: assigneeMatch,
           status: { $in: ['pending', 'overdue'] },
           ...orderMatch,
@@ -199,7 +201,8 @@ class TaskService {
       ? { 'sourceOrder.orderId': { $nin: closed } }
       : {};
     const candidates = await Task.find({
-      $or: assigneeMatch,
+      $and: [await W.taskFilter()],
+          $or: assigneeMatch,
       status: { $in: ['pending', 'overdue'] },
       ...orderMatch,
     }).lean();
@@ -209,7 +212,7 @@ class TaskService {
       orderIds.length ? CommerceOrder.find({ $or: [{ commerceOrderId: { $in: orderIds } }, { orderId: { $in: orderIds } }] }).lean() : [],
       orderIds.length ? OrderReturn.find({ $or: [{ commerceOrderId: { $in: orderIds } }, { orderId: { $in: orderIds } }], workflowStage: { $ne: 'completed' } }).lean() : [],
       Task.aggregate([
-        { $match: { status: { $in: ['pending', 'in-progress', 'overdue'] }, assigneeId: { $ne: null } } },
+        { $match: W.and({ status: { $in: ['pending', 'in-progress', 'overdue'] }, assigneeId: { $ne: null } }, await W.taskFilter()) },
         { $group: { _id: '$assigneeId', n: { $sum: 1 } } },
       ]),
     ]);
@@ -258,6 +261,7 @@ class TaskService {
         }
       : { $or: [{ assigneeId: null }, { assigneeId: { $exists: false } }] };
     const tasks = await Task.find({
+      $and: [await W.taskFilter()],
       ...assigneeMatch,
       status: { $in: ['pending', 'in-progress', 'overdue'] },
       createdAt: { $gte: today, $lt: tomorrow },
@@ -273,7 +277,7 @@ class TaskService {
 
   async getTasksByTypeAndStatus(type, status) {
     return Task.aggregate([
-      { $match: { type, status } },
+      { $match: W.and({ type, status }, await W.taskFilter()) },
       { $addFields: { priorityScore: priorityScoreSwitch() } },
       { $sort: { priorityScore: -1, createdAt: 1 } },
     ]);

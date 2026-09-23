@@ -1,3 +1,4 @@
+const W = require('../../workspace/work-window');
 const { Task, Admin, CommerceOrder } = require('../../../database/models');
 const {
   createTaskSchema,
@@ -98,10 +99,11 @@ async function getWorkload(req, res, next) {
   try {
     const [byAssignee, unassigned, admins] = await Promise.all([
       Task.aggregate([
-        { $match: { status: { $in: ['pending', 'in-progress', 'overdue'] } } },
+        { $match: W.and({ status: { $in: ['pending', 'in-progress', 'overdue'] } }, await W.taskFilter()) },
         { $group: { _id: '$assigneeId', active: { $sum: 1 } } },
       ]),
       Task.countDocuments({
+        $and: [await W.taskFilter()],
         status: { $in: ['pending', 'in-progress', 'overdue'] },
         assigneeId: null,
       }),
@@ -235,7 +237,7 @@ async function getTasksByOrder(req, res, next) {
   try {
     const { orderId } = req.params;
     const { status } = req.query;
-    const tasks = await Task.find({ 'sourceOrder.orderId':orderId, ...require('../../workspace/service').scope(req.user), ...(status ? {status} : {}) }).lean();
+    const tasks = await Task.find({ $and: [await W.taskFilter()], 'sourceOrder.orderId':orderId, ...require('../../workspace/service').scope(req.user), ...(status ? {status} : {}) }).lean();
     res.json({ success: true, data: tasks });
   } catch (error) {
     next(error);

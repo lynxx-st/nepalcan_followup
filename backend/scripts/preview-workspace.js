@@ -73,7 +73,7 @@ async function main() {
         totalAmount: 1350,
         shippingAmount: 150,
         paymentMethod: "Cash",
-        items: [{ product: { productName: "Cotton shirt" }, variant: { title: "Blue / M" }, quantity: 2, price: 600 }],
+        items: [{ product: { productName: "Cotton shirt", productImages: [{ url: "/preview-shirt.svg" }, { url: "/preview-shirt.svg?back" }] }, variant: { title: "Blue / M" }, quantity: 2, price: 600 }],
       },
     });
     await Task.create({

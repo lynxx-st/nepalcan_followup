@@ -152,7 +152,7 @@ class CommerceSyncService {
       if (settings.vendorCallSlaMinutes) this.slaDefaults['vendor-call'] = settings.vendorCallSlaMinutes;
       if (settings.cancelledRecoverySlaMinutes) this.slaDefaults['cancelled-recovery'] = settings.cancelledRecoverySlaMinutes;
       if (settings.reviewFollowupDelayHours !== undefined) this.reviewFollowupDelayHours = settings.reviewFollowupDelayHours;
-      if (settings.pendingReviewStartDate) this.pendingReviewStartDate = settings.pendingReviewStartDate;
+      this.pendingReviewStartDate = settings.pendingReviewStartDate || "";
       if (settings.returnCustomerResponseSlaMinutes) this.slaDefaults['return-customer-response'] = settings.returnCustomerResponseSlaMinutes;
       if (settings.returnVendorResponseSlaMinutes) this.slaDefaults['return-vendor-response'] = settings.returnVendorResponseSlaMinutes;
       if (settings.reviewCallSlaMinutes) this.slaDefaults['review-call'] = settings.reviewCallSlaMinutes;
@@ -814,10 +814,10 @@ class CommerceSyncService {
   async getOrders(filters = {}) {
     await this.loadSettings();
     const { status, paymentStatus, vendor, customer, segment, search, sortBy, sortOrder, page = 1, limit = 20, rbac } = filters;
-    const query = {};
+    const query = { $and: [await require('../../workspace/work-window').orderFilter()] };
 
     if (rbac && Object.keys(rbac).length) {
-      query.$and = [rbac];
+      query.$and.push(rbac);
     }
 
     if (segment) {
@@ -959,7 +959,7 @@ class CommerceSyncService {
       };
     });
 
-    return { orders: enrichedOrders, total, page, limit };
+    return { orders: enrichedOrders, total, page, limit, pendingWorkStartDate: await require("../../workspace/work-window").startDate() };
   }
 
   async syncExternalNonHeavy(options = {}) {

@@ -593,13 +593,14 @@ test("return records, task links and counts use the same employee scope", async 
 });
 test("task queue includes product, variant, quantity, price and order total", async () => {
   const key = String(new mongoose.Types.ObjectId());
-  await CommerceOrder.create({ commerceOrderId: key, orderId: "ITEM-DETAIL-TEST", commerce: { orderStatus: "Pending", totalAmount: 1350, shippingAmount: 150, paymentMethod: "Cash", items: [{ product: { productName: "Cotton shirt" }, variant: { title: "Blue / M" }, quantity: 2, price: 600 }] } });
+  await CommerceOrder.create({ commerceOrderId: key, orderId: "ITEM-DETAIL-TEST", commerce: { orderStatus: "Pending", totalAmount: 1350, shippingAmount: 150, paymentMethod: "Cash", items: [{ product: { productName: "Cotton shirt", productImages: [{ url: "https://example.com/shirt.jpg" }] }, variant: { title: "Blue / M" }, quantity: 2, price: 600 }] } });
   const task = await make({ sourceOrder: { orderId: key } });
   const rows = await S.queue({ userId: a._id, role: "staff" });
   const item = rows.find(t => String(t._id) === String(task._id)).order;
   assert.equal(item.items[0].product.productName, "Cotton shirt");
   assert.equal(item.items[0].variant.title, "Blue / M");
   assert.equal(item.items[0].quantity, 2);
+  assert.equal(item.items[0].product.productImages[0].url, "https://example.com/shirt.jpg");
   assert.equal(item.items[0].price, 600);
   assert.equal(item.amount, 1350);
   assert.equal(item.shippingAmount, 150);
@@ -613,4 +614,60 @@ test("processing and shipped orders retire logistics and order-check tasks", asy
     assert.equal(await Task.countDocuments({ 'sourceOrder.orderId': key, status: { $in: ['pending','overdue','in-progress'] } }), 0);
     assert.equal(await Task.countDocuments({ 'sourceOrder.orderId': key, closedAt: { $ne: null } }), 2);
   }
+});
+
+test("pending work window is inclusive in Nepal, reversible and preserves completed history", async () => {
+  const W = require('../modules/workspace/work-window');
+  const auth = jwt.sign({ sub: String(admin._id), userId: String(admin._id), role: 'super-admin' }, process.env.JWT_SECRET);
+  assert.equal((await call('/api/v1/settings', 'PUT', { pendingWorkStartDate: '2026-02-30' }, auth)).status, 400);
+  assert.equal((await call('/api/v1/settings', 'PUT', { pendingWorkStartDate: '2026-09-01' }, token)).status, 403);
+  const keys = [String(new mongoose.Types.ObjectId()), String(new mongoose.Types.ObjectId())];
+  for (const [i, key] of keys.entries()) await CommerceOrder.create({ commerceOrderId: key, orderId: `WINDOW-${i}`, externalCreatedAt: new Date(i ? '2026-08-31T18:15:00Z' : '2026-08-31T18:14:59Z'), workflowStage: 'pending_confirmation', commerce: { orderStatus: 'Pending' } });
+  const old = await make({ sourceOrder: { orderId: keys[0] } });
+  const recent = await make({ sourceOrder: { orderId: keys[1] } });
+  const complete = await make({ sourceOrder: { orderId: keys[0] }, status: 'completed', completedAt: new Date(), completedBy: a._id });
+  await OrderReturn.create({ externalReturnId: 'WINDOW-RETURN', commerceOrderId: keys[0], orderId: 'WINDOW-0', workflowStage: 'customer_response', status: 'Initiated', isActive: true });
+  try {
+    assert.equal((await call('/api/v1/settings', 'PUT', { pendingWorkStartDate: '2026-09-01' }, auth)).status, 200);
+    const rows = await S.queue({ userId: a._id, role: 'staff' });
+    assert.equal(rows.some(t => String(t._id) === String(old._id)), false);
+    assert.ok(rows.some(t => String(t._id) === String(recent._id)));
+    assert.ok(rows.some(t => String(t._id) === String(complete._id)));
+    assert.equal(await Task.countDocuments(W.and({ _id: old._id }, await W.taskFilter())), 0);
+    assert.equal(await OrderReturn.countDocuments(W.and({ externalReturnId: 'WINDOW-RETURN' }, await W.returnFilter())), 0);
+    const { commerceSync } = require('../modules/commerce/service/commerce.sync.service');
+    const list = await commerceSync.getOrders({ search: 'WINDOW-' });
+    assert.deepEqual(list.orders.map(o => o.orderId), ['WINDOW-1']);
+    assert.equal((await Task.findById(old._id)).status, 'pending');
+    assert.equal((await call(`/api/v1/workspace/tasks/${old._id}/start`, 'POST', {}, token)).status, 409);
+    const overview = await call('/api/v1/analytics/overview', 'GET', null, auth);
+    assert.equal(overview.status, 200);
+  } finally {
+    await Setting.updateOne({ key: 'pendingWorkStartDate' }, { $set: { value: '' } });
+  }
+  const restored = await S.queue({ userId: a._id, role: 'staff' });
+  assert.ok(restored.some(t => String(t._id) === String(old._id)));
+});
+
+test("date window excludes older vendor siblings from calls, outcomes and assignment", async () => {
+  const cutoff = '2026-09-01';
+  const keys = [String(new mongoose.Types.ObjectId()), String(new mongoose.Types.ObjectId())];
+  for (const [i, key] of keys.entries()) await CommerceOrder.create({ commerceOrderId: key, orderId: `WINDOW-VENDOR-${i}`, externalCreatedAt: new Date(i ? '2026-09-02' : '2026-08-30'), commerce: { orderStatus: 'Pending' }, customer: { confirmationStatus: 'confirmed' } });
+  const old = await make({ type: 'vendor-call', vendorKey: 'window-vendor', sourceOrder: { orderId: keys[0] } });
+  const recent = await make({ type: 'vendor-call', vendorKey: 'window-vendor', sourceOrder: { orderId: keys[1] } });
+  await Setting.updateOne({ key: 'pendingWorkStartDate' }, { $set: { value: cutoff } }, { upsert: true });
+  try {
+    const user = { userId: a._id, role: 'staff' };
+    await S.start(String(recent._id), user);
+    assert.equal((await Task.findById(old._id)).status, 'pending');
+    await S.recordOutcome(String(recent._id), { outcome: 'no-answer', requestId: 'window-vendor-outcome-01', applyToGroup: true }, user);
+    assert.equal((await Task.findById(old._id)).attempts.length, 0);
+    assert.equal((await Task.findById(recent._id)).attempts.length, 1);
+    await S.assign(String(recent._id), String(b._id), { userId: admin._id, role: 'super-admin' });
+    assert.equal(String((await Task.findById(old._id)).assigneeId), String(a._id));
+    assert.equal(String((await Task.findById(recent._id)).assigneeId), String(b._id));
+    const orphan = await make({ createdAt: new Date('2026-08-30'), sourceOrder: { orderId: 'missing-window-order' } });
+    const W = require('../modules/workspace/work-window');
+    assert.equal(await Task.countDocuments(W.and({ _id: orphan._id }, await W.taskFilter())), 0);
+  } finally { await Setting.updateOne({ key: 'pendingWorkStartDate' }, { $set: { value: '' } }); }
 });

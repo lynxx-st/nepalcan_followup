@@ -78,3 +78,14 @@ Implementation and local verification do not imply a production deployment. Conf
 - [x] Portal details fill missing line items as well as contact numbers.
 - [x] Running database verified: zero active routine tasks for orders already in logistics.
 - [x] 43 backend tests passed, including logistics exclusion and complete line-item payload checks.
+
+## Product context and pending-work window — 23 September 2026
+
+Improve My Tasks without changing call outcomes or losing history. Use the order creation date, inclusive from Nepal midnight, for a reversible workspace-wide pending-work window.
+
+- [x] Add one shared date filter for pending tasks, assignment, order queues, returns and counts.
+- [x] Add an admin setting with validation, clear/reset action and visible active-filter notice.
+- [x] Show real product photos, gallery previews and missing-image fallbacks.
+- [x] Refine task queue density, product summaries, party filters and priority sorting.
+- [x] Verify cutoff boundaries, reversibility, completed history and mobile layout.
+- [x] Run tests/build and push the completed changes.

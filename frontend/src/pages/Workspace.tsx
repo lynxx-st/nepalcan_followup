@@ -19,6 +19,7 @@ import {
 import api, { attendanceApi } from "../services/api";
 
 import "./workspace.css";
+import ProductPhotos, { ProductThumbnail, productName } from "./ProductPhotos";
 
 type Row = Record<string, any>;
 
@@ -176,7 +177,8 @@ function OrderItems({ order }: { order: Row }) {
             (qty != null && price != null ? Number(qty) * Number(price) : null);
           return (
             <article key={item._id || index} className="task-product">
-              <div>
+              <ProductPhotos item={item} />
+              <div className="product-description">
                 <strong>{name}</strong>
                 {variant && variant !== "Default Title" && (
                   <small>{variant}</small>
@@ -231,7 +233,10 @@ export default function Workspace({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
-    [search, setSearch] = useState("");
+    [search, setSearch] = useState(""),
+    [party, setParty] = useState("all"),
+    [sort, setSort] = useState("priority"),
+    [refreshedAt, setRefreshedAt] = useState("");
 
   const [params, setParams] = useSearchParams();
   const selected = params.get("task"),
@@ -245,6 +250,7 @@ export default function Workspace({
         attendanceApi.getStatus() as any,
       ]);
       setTasks(rows);
+      setRefreshedAt(new Date().toISOString());
       setMe(user);
       setShift(attendance.data?.isCheckedIn);
       setError("");
@@ -286,6 +292,7 @@ export default function Workspace({
 
         return (
           match &&
+          (party === "all" || contact(t).vendor === (party === "vendor")) &&
           (mode === "reviews"
             ? t.type === "review-call"
             : mode === "returns"
@@ -298,12 +305,13 @@ export default function Workspace({
             contact(t).name,
             t.reason,
             t.assigneeName,
+            ...(t.order?.items || []).map(productName),
           ])
             .toLowerCase()
             .includes(search.toLowerCase())
         );
       }),
-    [tasks, tab, search, mode],
+    [tasks, tab, search, mode, party],
   );
 
   const groups = useMemo(() => {
@@ -313,8 +321,10 @@ export default function Workspace({
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(t);
     });
-    return [...map.values()];
-  }, [filtered]);
+    const priority: Row = { critical: 4, high: 3, medium: 2, low: 1 };
+    const compare = (a: Row, b: Row) => (sort === "priority" ? (priority[b.priority] || 0) - (priority[a.priority] || 0) : 0) || (+new Date(a.nextAttemptAt || a.dueAt || a.createdAt) - +new Date(b.nextAttemptAt || b.dueAt || b.createdAt));
+    return [...map.values()].map(group => group.sort(compare)).sort((a, b) => compare(a[0], b[0]));
+  }, [filtered, sort]);
 
   const current = tasks.find((t) => t._id === selected),
     siblings = current
@@ -353,7 +363,7 @@ export default function Workspace({
                   : "My tasks"}
             <span className="heading-dot">.</span>
           </h1>
-          <p>One conversation. A clear next step.</p>
+          <p>Review the order, make the call, record what happens next.</p>
         </div>
         <div className="work-actions">
           <button
@@ -374,6 +384,7 @@ export default function Workspace({
       </header>
 
       <ErrorMessage message={error} />
+      {me?.pendingWorkStartDate && <div className="work-window-notice"><span>Pending work from <strong>{me.pendingWorkStartDate}</strong> · order date, Nepal time</span>{["admin", "super-admin"].includes(me.role) && <Link to="/settings">Change date <ArrowUpRight size={14} /></Link>}</div>}
 
       {me?.training?.noCalls && (
         <div className="work-notice">
@@ -445,22 +456,29 @@ export default function Workspace({
           <Search size={17} />
           <input
             aria-label="Search tasks"
-            placeholder="Order, person or employee"
+            placeholder="Order, product, person or employee"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </label>
       </div>
 
+      <div className="queue-controls">
+        <div className="party-filters" role="group" aria-label="Contact type">
+          {[["all", "All contacts"], ["customer", "Customers"], ["vendor", "Vendors"]].map(([value, label]) => <button key={value} aria-pressed={party === value} onClick={() => setParty(value)}>{label}</button>)}
+        </div>
+        <label>Sort <select aria-label="Sort tasks" value={sort} onChange={e => setSort(e.target.value)}><option value="priority">Priority first</option><option value="due">Earliest follow-up</option></select></label>
+        {refreshedAt && <span className="queue-updated">Updated {new Date(refreshedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span>}
+      </div>
       <div className={`work-layout ${current ? "has-selection" : ""}`}>
         <section className="work-queue" aria-label="Task queue">
           <div className="queue-caption">
             <span>{groups.length} conversations</span>
-            <span>Priority first</span>
+            <span>{filtered.length} orders · {sort === "priority" ? "Priority first" : "Earliest follow-up"}</span>
           </div>
 
           {loading ? (
-            <div className="work-empty">Loading your work…</div>
+            <div className="queue-skeleton" role="status" aria-label="Loading tasks">{[1, 2, 3].map(i => <div key={i}><span /><span /><span /></div>)}</div>
           ) : groups.length === 0 ? (
             <div className="work-empty">
               <CheckCheck size={28} />
@@ -499,6 +517,7 @@ export default function Workspace({
                   </div>
                   <h2>{person.name}</h2>
                   <p>{title[t.type] || t.reason}</p>
+                  {t.order?.items?.length > 0 && <div className="queue-product"><ProductThumbnail item={t.order.items[0]} /><span><strong>{productName(t.order.items[0])}</strong><small>Qty {t.order.items[0].quantity ?? t.order.items[0].qty ?? "—"}{t.order.items.length > 1 ? ` · +${t.order.items.length - 1} more products` : ""} · {money(t.order.amount)}</small></span></div>}
                   <div className="conversation-bottom">
                     <span>
                       {t.assigneeName || "Unassigned"} ·{" "}
@@ -522,6 +541,10 @@ export default function Workspace({
               canAssign={["admin", "super-admin", "manager"].includes(me?.role)}
               siblings={siblings}
               onBack={() => select()}
+              onNext={() => {
+                const next = tasks.find(t => t._id !== current._id && t.status !== "completed" && !t.closedAt && (!t.nextAttemptAt || new Date(t.nextAttemptAt) <= new Date()) && (mode !== "reviews" || t.type === "review-call") && (mode !== "returns" || t.type === "return-followup"));
+                select(next?._id);
+              }}
               onSelect={select}
               onSaved={async () => {
                 await load();
@@ -556,6 +579,7 @@ function TaskPanel({
   canAssign,
   siblings,
   onBack,
+  onNext,
   onSelect,
   onSaved,
 }: {
@@ -563,6 +587,7 @@ function TaskPanel({
   canAssign: boolean;
   siblings: Row[];
   onBack: () => void;
+  onNext: () => void;
   onSelect: (id: string) => void;
   onSaved: () => Promise<void>;
 }) {
@@ -789,16 +814,14 @@ function TaskPanel({
             );
           })}
         </div>
-        {(!contact(t, "customer").phone ||
-          !contact(t, "vendor").phone ||
-          !t.order?.items?.length) && (
+        {!closed && (
           <button
             className="contact-refresh"
             disabled={contactLoading}
             onClick={loadContact}
           >
             <RefreshCw size={13} />
-            {contactLoading ? "Fetching contacts..." : "Refresh order details"}
+            {contactLoading ? "Refreshing order..." : "Refresh order details"}
           </button>
         )}
         <div className="work-meta">
@@ -828,9 +851,7 @@ function TaskPanel({
         )}
         <ErrorMessage message={error} />
         {message && (
-          <p className="work-notice" role="status">
-            {message}
-          </p>
+          <div className="saved-outcome" role="status"><CheckCheck size={18} /><span>{message}{t.nextAttemptAt ? ` Next follow-up: ${time(t.nextAttemptAt)}.` : closed ? " This step is complete." : ""}</span>{message === "Outcome saved." && <button type="button" className="quiet-button" onClick={onNext}>Next conversation <ChevronRight size={15} /></button>}</div>
         )}
         {!closed && (
           <form id="task-outcome" onSubmit={save} className="outcome-form">
@@ -1050,6 +1071,7 @@ function TaskPanel({
           )}
         </details>
       </div>
+      {closed && <div className="task-actions"><button type="button" className="solid-button" onClick={onNext}>Next conversation <ChevronRight size={16} /></button></div>}
       {!closed && (
         <div className="task-actions">
           {person.phone && t.type !== "order-check" && (

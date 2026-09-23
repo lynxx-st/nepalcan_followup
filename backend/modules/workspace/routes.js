@@ -193,6 +193,7 @@ router.get(
     return {
       ...req.user,
       employee: member,
+      pendingWorkStartDate: await require("./work-window").startDate(),
       training: member
         ? E.profile(
             member,
