@@ -1,4 +1,10 @@
 const { UserAttendance, Admin } = require('../../../database/models');
+function refreshAssignments() {
+  // Attendance is already committed. Queue reconciliation must not hold the response open.
+  setImmediate(() => require('../../workspace/service').rebalance().catch(error => {
+    if (error.statusCode !== 409) console.error('Assignment refresh pending; scheduler will retry');
+  }));
+}
 
 async function getActiveStatus(userId) {
   const activeRecord = await UserAttendance.findOne({
@@ -54,7 +60,7 @@ async function checkIn(userId, notes = '') {
     notes,
   });
 
-  await require('../../workspace/service').rebalance().catch(e => { if (e.statusCode !== 409) console.error('Assignment refresh pending'); });
+  refreshAssignments();
   return activeRecord;
 }
 
@@ -80,7 +86,7 @@ async function checkOut(userId, notes = '') {
   if (notes) activeRecord.notes = notes;
 
   await activeRecord.save();
-  await require('../../workspace/service').rebalance().catch(e => { if (e.statusCode !== 409) console.error('Assignment refresh pending'); });
+  refreshAssignments();
   return activeRecord;
 }
 

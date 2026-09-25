@@ -371,7 +371,8 @@ async function rebalanceUnlocked() {
 const rebalance = () => lease("assignments", rebalanceUnlocked);
 async function queue(user, team = false) {
   if (team && !manager(user)) fail("Manager access required", 403);
-  await reconcileOrderStages();
+  // Sync/assignment reconciliation repairs stages. A read must not scan and mutate
+  // every order before returning the employee's queue.
   const tasks = await Task.find({
     $and: [await W.taskFilter()],
     ...(team ? scope(user) : { assigneeId: actorId(user) }),
@@ -404,6 +405,15 @@ async function queue(user, team = false) {
   const map = new Map(orders.map((o) => [String(o.commerceOrderId), o]));
   const { decodePhone } = await import("./commerce-client.mjs");
   return tasks
+    .filter(t => {
+      if (!E.WORK.includes(t.status)) return true;
+      if (t.metadata?.returnId) {
+        const returned = returns.find(r => r.externalReturnId === t.metadata.returnId);
+        return !returned || (!/delivered/i.test(returned.status || "") && returned.workflowStage !== "completed");
+      }
+      const order = map.get(String(t.sourceOrder?.orderId || t.orderId));
+      return !order || taskFitsOrder(t, order);
+    })
     .map((t) => {
       const returned = returns.find(
         (r) => r.externalReturnId === t.metadata?.returnId,

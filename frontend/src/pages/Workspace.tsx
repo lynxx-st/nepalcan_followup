@@ -31,9 +31,11 @@ const request = async (path: string, data?: any, method = "get") => {
   return result.data;
 };
 
-const problem = (e: any) =>
+const problem = (e: any, fallback = "Could not save. Your changes are still here. Please retry.") =>
   e?.response?.data?.error?.message ||
-  "Could not save. Your changes are still here. Please retry.";
+  (!e?.response || e?.response?.status >= 502
+    ? "The app cannot reach the backend. Check that it is running, then retry."
+    : fallback);
 
 const time = (value?: string) =>
   value
@@ -255,7 +257,7 @@ export default function Workspace({
       setShift(attendance.data?.isCheckedIn);
       setError("");
     } catch (e) {
-      setError(problem(e));
+      setError(problem(e, "Could not refresh your tasks. Your saved changes are preserved. Refresh tasks to try again."));
     } finally {
       setLoading(false);
     }
@@ -340,6 +342,7 @@ export default function Workspace({
     setBusy(true);
     try {
       await (shift ? attendanceApi.checkOut() : attendanceApi.checkIn());
+      setShift(!shift);
       await load();
     } catch (e) {
       setError(problem(e));

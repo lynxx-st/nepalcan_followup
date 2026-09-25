@@ -89,3 +89,13 @@ Improve My Tasks without changing call outcomes or losing history. Use the order
 - [x] Refine task queue density, product summaries, party filters and priority sorting.
 - [x] Verify cutoff boundaries, reversibility, completed history and mobile layout.
 - [x] Run tests/build and push the completed changes.
+
+## Settings and shift responsiveness — 25 September 2026
+
+- [x] Submit current form values and only changed settings; keep save feedback visible.
+- [x] Avoid order reconciliation when confirmation priority has not changed.
+- [x] Return attendance success before background assignment refresh finishes.
+- [x] Remove full order reconciliation from task-list reads; filter stale stages without mutating records.
+- [x] Verify date save survives browser reload, all 46 backend tests pass, and frontend type check/build pass.
+
+Live local checks: task-list request previously exceeded 30 seconds; after the change it returned HTTP 200 in 3.2 seconds. Settings and attendance reads also returned HTTP 200. Deployed-site login was reported as HTTP 503 by the user; no production configuration was changed.

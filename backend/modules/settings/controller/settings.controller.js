@@ -61,8 +61,9 @@ async function updateSettings(req, res, next) {
     if (updates.confirmationOrder !== undefined && !['customer_first', 'vendor_first'].includes(updates.confirmationOrder)) {
       return res.status(400).json({ success: false, error: { message: 'Choose Customer first or Vendor first' } });
     }
+    const confirmationChanged = updates.confirmationOrder !== undefined && updates.confirmationOrder !== await settingsService.get('confirmationOrder');
     const settings = await settingsService.update(updates);
-    if (updates.confirmationOrder !== undefined) {
+    if (confirmationChanged) {
       await require('../../commerce/service/commerce.sync.service').commerceSync.loadSettings();
       await require('../../workspace/service').reconcileOrderStages();
     }

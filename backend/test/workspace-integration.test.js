@@ -671,3 +671,20 @@ test("date window excludes older vendor siblings from calls, outcomes and assign
     assert.equal(await Task.countDocuments(W.and({ _id: orphan._id }, await W.taskFilter())), 0);
   } finally { await Setting.updateOne({ key: 'pendingWorkStartDate' }, { $set: { value: '' } }); }
 });
+
+test("shift check-in and check-out finish without waiting for assignment refresh", async () => {
+  const attendance = require('../modules/attendance/service/attendance.service');
+  const original = S.rebalance;
+  let release;
+  const blocked = new Promise(resolve => { release = resolve; });
+  S.rebalance = () => blocked;
+  const employee = await Admin.create({ username: 'shift-response-test', name: 'Shift test', passwordHash: 'unused-test-account', isActive: true });
+  let timer;
+  try {
+    const result = await Promise.race([
+      (async () => { await attendance.checkIn(employee._id); assert.equal((await attendance.getActiveStatus(employee._id)).isCheckedIn, true); await attendance.checkOut(employee._id); return attendance.getActiveStatus(employee._id); })(),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Attendance waited for allocation')), 1500); }),
+    ]);
+    assert.equal(result.isCheckedIn, false);
+  } finally { clearTimeout(timer); release(); await new Promise(resolve => setImmediate(resolve)); S.rebalance = original; }
+});
